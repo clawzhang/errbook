@@ -18,6 +18,13 @@ jobs:
       - name: 设置 Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: 检查构建文件
+        run: |
+          echo "Dockerfile:"
+          nl -ba Dockerfile | sed -n '1,80p'
+          echo ".dockerignore:"
+          nl -ba .dockerignore | sed -n '1,80p'
+
       - name: 构建 linux/amd64 镜像
         run: |
           docker build --platform linux/amd64 -t errbook:latest .
