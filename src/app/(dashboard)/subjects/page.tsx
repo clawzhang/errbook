@@ -87,7 +87,7 @@ export default function SubjectsPage() {
         description="从语文、数学、英语三个维度快速查看错题数量、掌握进度和待复习任务，直接跳转到对应筛选结果。"
         actions={
           <Link href="/errors">
-            <Button>前往错题本</Button>
+            <Button>前往错题集</Button>
           </Link>
         }
       />

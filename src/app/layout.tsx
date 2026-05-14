@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "错题本 - 错题记录与考核系统",
+  title: "错题集 - 错题整理与考核系统",
   description: "记录语文/数学/英语错题，科学复习，高效提升",
 };
 

@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { BookOpenText, ChartSpline, Sparkles } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "登录 - 错题记录",
-  description: "登录你的错题记录账号",
+  title: "登录 - 错题集",
+  description: "登录你的错题集账号",
 };
 
 export default function AuthLayout({
@@ -20,7 +20,7 @@ export default function AuthLayout({
             <div className="inline-flex items-center gap-3 rounded-full border border-white/25 bg-white/12 px-4 py-2 backdrop-blur-md">
               <BookOpenText className="size-5" />
               <span className="text-sm font-semibold tracking-[0.16em] uppercase">
-                错题记录
+                错题集
               </span>
             </div>
             <h1 className="mt-10 max-w-md text-5xl font-black leading-[1.06] tracking-[-0.06em]">
@@ -57,10 +57,10 @@ export default function AuthLayout({
                 <BookOpenText className="size-7" />
               </div>
               <h1 className="mt-4 text-2xl font-black tracking-[-0.04em] text-slate-950">
-                错题记录
+                错题集
               </h1>
               <p className="mt-2 text-sm text-muted-foreground">
-                记录错题，科学复习，高效提升
+                学习更高效，是错题也是财富
               </p>
             </div>
             {children}

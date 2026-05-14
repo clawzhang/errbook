@@ -55,10 +55,10 @@ function LoginForm() {
     <Card className="border-white/70 bg-white/88 shadow-[0_26px_70px_rgba(59,101,176,0.1)]">
       <CardHeader className="pb-2">
         <CardTitle className="text-[1.8rem] font-black tracking-[-0.04em] text-slate-950">
-          欢迎回来
+          登录错题集
         </CardTitle>
         <CardDescription className="max-w-sm">
-          登录后即可进入新的学习工作台，查看今日复习任务、错题趋势和掌握进度。
+          学习更高效，是错题也是财富。登录后查看今日复习任务、错题趋势和掌握进度。
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>
@@ -107,6 +107,9 @@ function LoginForm() {
             <Link href="/register" className="font-semibold text-primary hover:underline">
               注册
             </Link>
+          </p>
+          <p className="text-center text-xs text-muted-foreground">
+            忘记密码？请联系管理员重置密码。
           </p>
         </CardFooter>
       </form>

@@ -194,7 +194,7 @@ export default function ErrorsPage() {
       ) : errors.length === 0 ? (
         <EmptyStateCard
           title="还没有符合条件的错题"
-          description="你可以先添加一条新的错题记录，或者清空筛选条件，查看已有的其他错题。"
+          description="你可以先添加一条新的错题，或者清空筛选条件，查看已有的其他错题。"
           action={
             <Link href="/errors/new">
               <Button size="sm">添加第一道错题</Button>

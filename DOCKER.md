@@ -13,6 +13,7 @@ cp .env.docker.example .env.docker
 - `APP_PORT`：宿主机暴露端口，默认 `3000`
 - `AUTH_SECRET`：生产环境必须改成足够长的随机字符串
 - `AUTH_URL` / `NEXTAUTH_URL`：改成实际访问地址，例如 `https://errbook.example.com`
+- `ADMIN_EMAIL`：管理员邮箱。注册并登录该邮箱账号后，可进入用户管理重置用户密码
 
 ## 2. 构建镜像
 

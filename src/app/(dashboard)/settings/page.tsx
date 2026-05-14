@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Select,
   SelectContent,
@@ -21,13 +22,18 @@ import {
   User,
   Lock,
   Info,
+  Upload,
 } from "lucide-react";
 import { getGradeOptions, getSemesterOptions, GRADE_LABELS, SEMESTER_LABELS } from "@/lib/grade";
 import { DashboardHero, DashboardPage } from "@/components/layout/dashboard-shell";
 
 export default function SettingsPage() {
-  const { data: session } = useSession();
+  const { data: session, update } = useSession();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [name, setName] = useState(session?.user?.name || "");
+  const [avatar, setAvatar] = useState(session?.user?.image || "");
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -50,8 +56,20 @@ export default function SettingsPage() {
 
   const gradeOptions = getGradeOptions();
   const semesterOptions = getSemesterOptions();
+  const initials = name.trim()
+    ? name.trim().slice(0, 2)
+    : session?.user?.email?.slice(0, 2).toUpperCase() || "U";
 
   useEffect(() => {
+    // 加载用户资料
+    fetch("/api/profile")
+      .then((r) => r.json())
+      .then((d) => {
+        setName(d.name || "");
+        setAvatar(d.avatar || "");
+      })
+      .catch(() => {});
+
     // 加载年级设置
     fetch("/api/grade")
       .then((r) => r.json())
@@ -76,7 +94,69 @@ export default function SettingsPage() {
 
   async function handleNameUpdate(e: React.FormEvent) {
     e.preventDefault();
-    toast.success("用户名更新功能开发中");
+    const trimmedName = name.trim();
+    if (trimmedName.length < 2) {
+      toast.error("用户名至少2个字符");
+      return;
+    }
+
+    setProfileSaving(true);
+    try {
+      const res = await fetch("/api/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmedName, avatar }),
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        setName(data.name || trimmedName);
+        setAvatar(data.avatar || "");
+        await update();
+        toast.success("基本信息已保存");
+      } else {
+        toast.error(data.error || "保存失败");
+      }
+    } catch {
+      toast.error("保存失败");
+    } finally {
+      setProfileSaving(false);
+    }
+  }
+
+  async function handleAvatarUpload(file: File | undefined) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("请选择图片文件");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("头像图片不能超过2MB");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("avatar", file);
+    setAvatarUploading(true);
+    try {
+      const res = await fetch("/api/profile/avatar", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        setAvatar(data.url);
+        toast.success("头像已上传，请保存基本信息");
+      } else {
+        toast.error(data.error || "头像上传失败");
+      }
+    } catch {
+      toast.error("头像上传失败");
+    } finally {
+      setAvatarUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   }
 
   async function handlePasswordUpdate(e: React.FormEvent) {
@@ -299,6 +379,51 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleNameUpdate} className="space-y-4">
+                <div className="flex flex-wrap items-center gap-4 rounded-lg border bg-muted/20 p-3">
+                  <Avatar className="size-16">
+                    {avatar ? <AvatarImage src={avatar} alt={name || "用户头像"} /> : null}
+                    <AvatarFallback className="bg-blue-50 text-base font-bold text-primary">
+                      {initials}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">自定义头像</p>
+                      <p className="text-xs text-muted-foreground">
+                        支持 JPG、PNG、WebP 或 GIF，图片不超过2MB
+                      </p>
+                    </div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      className="hidden"
+                      onChange={(e) => void handleAvatarUpload(e.target.files?.[0])}
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={avatarUploading}
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <Upload className="h-4 w-4" />
+                        {avatarUploading ? "上传中..." : "上传头像"}
+                      </Button>
+                      {avatar ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setAvatar("")}
+                        >
+                          移除头像
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
                 <div className="space-y-2">
                   <Label>邮箱</Label>
                   <Input value={session?.user?.email || ""} disabled />
@@ -307,8 +432,8 @@ export default function SettingsPage() {
                   <Label>用户名</Label>
                   <Input value={name} onChange={(e) => setName(e.target.value)} />
                 </div>
-                <Button type="submit" size="sm">
-                  保存
+                <Button type="submit" size="sm" disabled={profileSaving || avatarUploading}>
+                  {profileSaving ? "保存中..." : "保存基本信息"}
                 </Button>
               </form>
             </CardContent>

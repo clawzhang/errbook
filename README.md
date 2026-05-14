@@ -1,6 +1,6 @@
-# 错题记录
+# 错题集
 
-一个基于 Next.js 的错题本系统，用于录入错题、拍照识别、AI 分析、知识点归类、复习调度、测试组卷和学习统计。
+一个基于 Next.js 的错题集系统，用于录入错题、拍照识别、AI 分析、知识点归类、复习调度、测试组卷和学习统计。
 
 ## 功能概览
 
@@ -44,6 +44,7 @@ DATABASE_URL="file:./dev.db"
 AUTH_SECRET="replace-with-a-long-random-secret"
 AUTH_URL="http://localhost:3000"
 NEXTAUTH_URL="http://localhost:3000"
+ADMIN_EMAIL="admin@example.com"
 ```
 
 执行数据库迁移：
@@ -117,9 +118,11 @@ APP_PORT=3000
 AUTH_SECRET=replace-with-a-long-random-secret
 AUTH_URL=http://localhost:3000
 NEXTAUTH_URL=http://localhost:3000
+ADMIN_EMAIL=admin@example.com
 ```
 
 生产环境请将 `AUTH_URL` 和 `NEXTAUTH_URL` 改成实际域名。
+`ADMIN_EMAIL` 用于指定管理员账号。先注册该邮箱账号，再使用该账号登录，系统会自动赋予管理员权限；管理员可在用户菜单进入“用户管理”，为忘记密码的用户重置密码。
 
 ### 2. 构建镜像
 

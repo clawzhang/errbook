@@ -137,7 +137,7 @@ export function ErrorForm({ mode, errorId, defaultValues }: ErrorFormProps) {
     <DashboardPage>
       <DashboardHero
         eyebrow={mode === "create" ? "新增错题" : "编辑错题"}
-        title={mode === "create" ? "把新错题收进系统" : "更新这条错题记录"}
+        title={mode === "create" ? "把新错题收进系统" : "更新这条错题"}
         description={
           mode === "create"
             ? "录入题目、错误答案和知识点，让后续复习调度和统计分析真正可用。"

@@ -3,6 +3,7 @@ import type { NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { ensureAdminRole } from "@/lib/admin";
 
 export const authConfig: NextAuthConfig = {
   adapter: PrismaAdapter(prisma),
@@ -29,7 +30,13 @@ export const authConfig: NextAuthConfig = {
 
         if (!isValid) return null;
 
-        return { id: user.id, email: user.email, name: user.name };
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          image: user.avatar,
+          role: user.role,
+        };
       },
     }),
   ],
@@ -41,12 +48,25 @@ export const authConfig: NextAuthConfig = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
+        token.role = user.role;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user && token.id) {
-        session.user.id = token.id as string;
+        const user = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { id: true, email: true, name: true, avatar: true, role: true },
+        });
+
+        if (user) {
+          const role = await ensureAdminRole(user);
+          session.user.id = user.id;
+          session.user.email = user.email;
+          session.user.name = user.name;
+          session.user.image = user.avatar;
+          session.user.role = role;
+        }
       }
       return session;
     },

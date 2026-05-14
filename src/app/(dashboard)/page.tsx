@@ -153,10 +153,10 @@ export default function DashboardHomePage() {
       <DashboardPage>
         <EmptyStateCard
           title="首页暂时无法加载"
-          description="本次没有成功拿到首页数据，你可以先进入错题本继续学习，稍后再回来查看全局概览。"
+          description="本次没有成功拿到首页数据，你可以先进入错题集继续学习，稍后再回来查看全局概览。"
           action={
             <Link href="/errors">
-              <Button size="sm">前往错题本</Button>
+              <Button size="sm">前往错题集</Button>
             </Link>
           }
         />
@@ -416,7 +416,7 @@ export default function DashboardHomePage() {
                   </Link>
                 ))
               ) : (
-                <p className="text-sm text-muted-foreground">还没有新的错题记录。</p>
+                <p className="text-sm text-muted-foreground">还没有新的错题。</p>
               )}
             </div>
           </CardContent>

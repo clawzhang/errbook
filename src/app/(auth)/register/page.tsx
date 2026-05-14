@@ -62,10 +62,10 @@ export default function RegisterPage() {
     <Card className="border-white/70 bg-white/88 shadow-[0_26px_70px_rgba(59,101,176,0.1)]">
       <CardHeader className="text-center">
         <CardTitle className="text-[1.8rem] font-black tracking-[-0.04em] text-slate-950">
-          注册账号
+          注册错题集
         </CardTitle>
         <CardDescription>
-          创建你的学习工作台账号，把错题、复习和测试记录集中管理。
+          创建你的错题集账号，把错题、复习和测试记录集中管理。
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>

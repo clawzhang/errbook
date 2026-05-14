@@ -84,7 +84,7 @@ export default function KnowledgePage() {
       <DashboardHero
         eyebrow="知识点"
         title="按知识点查看掌握进度"
-        description="把错题聚合到知识点维度，快速定位薄弱知识块，并回到错题本查看具体题目。"
+        description="把错题聚合到知识点维度，快速定位薄弱知识块，并回到错题集查看具体题目。"
       />
 
       <Card>

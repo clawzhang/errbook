@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
   BookOpenText,
@@ -13,9 +13,10 @@ import {
   LogOut,
   Menu,
   Settings,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,7 +33,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { href: "/errors", label: "错题本", icon: BookOpenText },
+  { href: "/errors", label: "错题集", icon: BookOpenText },
   { href: "/subjects", label: "按学科", icon: Grid2X2 },
   { href: "/knowledge", label: "按知识点", icon: BrainCircuit },
   { href: "/tests", label: "考试记录", icon: ClipboardList },
@@ -50,11 +51,23 @@ function SidebarContent({
   user,
 }: {
   pathname: string;
-  user: { name?: string | null; email?: string | null };
+  user: {
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
+    role?: string | null;
+  };
 }) {
+  const router = useRouter();
   const initials = user.name
     ? user.name.slice(0, 2)
     : user.email?.slice(0, 2).toUpperCase() || "U";
+
+  async function handleSignOut() {
+    await signOut({ redirect: false, callbackUrl: "/login" });
+    router.replace("/login");
+    router.refresh();
+  }
 
   return (
     <div className="flex h-full flex-col gap-6 p-4">
@@ -64,9 +77,9 @@ function SidebarContent({
             <BookOpenText className="size-6" />
           </div>
           <div>
-            <p className="text-lg font-black tracking-[-0.04em] text-slate-950">错题记录</p>
-            <p className="text-xs font-medium tracking-[0.12em] text-slate-400 uppercase">
-              学习更高效
+            <p className="text-lg font-black tracking-[-0.04em] text-slate-950">错题集</p>
+            <p className="text-xs font-medium text-slate-400">
+              学习更高效，是错题也是财富
             </p>
           </div>
         </Link>
@@ -113,6 +126,7 @@ function SidebarContent({
             }
           >
             <Avatar className="size-10">
+              {user.image ? <AvatarImage src={user.image} alt={user.name || "用户头像"} /> : null}
               <AvatarFallback className="bg-blue-50 text-sm font-bold text-primary">
                 {initials}
               </AvatarFallback>
@@ -129,10 +143,16 @@ function SidebarContent({
               <Settings className="mr-2 size-4" />
               设置
             </DropdownMenuItem>
+            {user.role === "ADMIN" ? (
+              <DropdownMenuItem render={<Link href="/settings/users" />}>
+                <Users className="mr-2 size-4" />
+                用户管理
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"
-              onClick={() => signOut({ callbackUrl: "/login" })}
+              onClick={() => void handleSignOut()}
             >
               <LogOut className="mr-2 size-4" />
               退出登录
@@ -147,7 +167,12 @@ function SidebarContent({
 export function Sidebar({
   user,
 }: {
-  user: { name?: string | null; email?: string | null };
+  user: {
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
+    role?: string | null;
+  };
 }) {
   const pathname = usePathname();
 
@@ -165,7 +190,12 @@ export function Sidebar({
 export function MobileNav({
   user,
 }: {
-  user: { name?: string | null; email?: string | null };
+  user: {
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
+    role?: string | null;
+  };
 }) {
   const pathname = usePathname();
 
@@ -181,8 +211,8 @@ export function MobileNav({
               <BookOpenText className="size-5" />
             </div>
             <div>
-              <p className="text-sm font-black tracking-[-0.04em] text-slate-950">错题记录</p>
-              <p className="text-[11px] text-slate-400">学习更高效</p>
+              <p className="text-sm font-black tracking-[-0.04em] text-slate-950">错题集</p>
+              <p className="text-[11px] text-slate-400">学习更高效，是错题也是财富</p>
             </div>
           </Link>
           <div className="w-9" />
