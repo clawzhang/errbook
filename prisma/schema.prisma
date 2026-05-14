@@ -1,0 +1,194 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum Subject {
+  CHINESE
+  MATH
+  ENGLISH
+}
+
+enum MasteryLevel {
+  NOT_MASTERED
+  PARTIALLY_MASTERED
+  MASTERED
+}
+
+enum ErrorSource {
+  EXAM
+  HOMEWORK
+  CLASS
+  OTHER
+}
+
+enum ReviewQuality {
+  AGAIN
+  HARD
+  GOOD
+  EASY
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  avatar       String?
+  // AI 配置
+  aiBaseUrl    String?
+  aiApiKey     String?
+  aiModel      String?
+  // 年级学期配置
+  currentGrade Int      @default(1)   // 年级（1-12，1=一年级...12=高三）
+  currentSemester String @default("FIRST")  // FIRST=上学期 SECOND=下学期
+  gradeSetAt   DateTime @default(now()) // 设置年级的基准日期，用于自动晋级计算
+  autoAdvance  Boolean  @default(true) // 是否自动晋级
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  errors       Error[]
+  reviews      Review[]
+  testSessions TestSession[]
+  accounts     Account[]
+  sessions     Session[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model KnowledgePoint {
+  id        String           @id @default(cuid())
+  subject   Subject
+  name      String
+  parentId  String?
+  parent    KnowledgePoint?  @relation("KnowledgePointTree", fields: [parentId], references: [id])
+  children  KnowledgePoint[] @relation("KnowledgePointTree")
+  sortOrder Int              @default(0)
+
+  errors    Error[]
+
+  @@unique([subject, name])
+}
+
+model Error {
+  id               String        @id @default(cuid())
+  userId           String
+  subject          Subject
+  knowledgePointId String?
+  grade            Int           @default(1)
+  semester         String        @default("FIRST")
+
+  question         String
+  questionImages   String        @default("[]")
+  wrongAnswer      String
+  correctAnswer    String
+  analysis         String?
+  errorReason      String?
+
+  source           ErrorSource   @default(HOMEWORK)
+  sourceDetail     String?
+
+  masteryLevel     MasteryLevel  @default(NOT_MASTERED)
+
+  easeFactor       Float         @default(2.5)
+  interval         Int           @default(0)
+  repetitions      Int           @default(0)
+  nextReviewDate   DateTime      @default(now())
+  lastReviewDate   DateTime?
+
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  knowledgePoint   KnowledgePoint? @relation(fields: [knowledgePointId], references: [id])
+  reviews          Review[]
+  testAnswers      TestAnswer[]
+
+  @@index([userId, subject])
+  @@index([userId, masteryLevel])
+  @@index([userId, nextReviewDate])
+  @@index([userId, grade, semester])
+}
+
+model Review {
+  id              String        @id @default(cuid())
+  errorId         String
+  userId          String
+
+  quality         ReviewQuality
+  userAnswer      String?
+
+  prevEaseFactor  Float?
+  prevInterval    Int?
+  prevRepetitions Int?
+
+  createdAt       DateTime      @default(now())
+
+  error           Error         @relation(fields: [errorId], references: [id], onDelete: Cascade)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([errorId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model TestSession {
+  id            String       @id @default(cuid())
+  userId        String
+  title         String?
+
+  config        String
+  status        String       @default("IN_PROGRESS")
+  totalQuestions Int
+  correctCount  Int          @default(0)
+
+  startedAt     DateTime     @default(now())
+  completedAt   DateTime?
+
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers       TestAnswer[]
+}
+
+model TestAnswer {
+  id            String       @id @default(cuid())
+  testSessionId String
+  errorId       String
+
+  userAnswer    String?
+  isCorrect     Boolean      @default(false)
+  timeSpent     Int?
+
+  testSession   TestSession  @relation(fields: [testSessionId], references: [id], onDelete: Cascade)
+  error         Error        @relation(fields: [errorId], references: [id])
+
+  @@index([testSessionId])
+}

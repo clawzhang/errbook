@@ -1,0 +1,16 @@
+.git
+.next
+.serena
+.superpowers
+node_modules
+npm-debug.log*
+Dockerfile
+docker-compose*.yml
+.env
+.env.*
+!.env.docker.example
+dev.db
+prisma/dev.db
+public/uploads
+docs
+README.md

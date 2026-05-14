@@ -1,0 +1,22 @@
+services:
+  errbook:
+    image: ${ERRBOOK_IMAGE:-errbook:latest}
+    container_name: errbook
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      DATABASE_URL: file:/app/data/dev.db
+      UPLOAD_DIR: /app/public/uploads
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    volumes:
+      - errbook-data:/app/data
+      - errbook-uploads:/app/public/uploads
+
+volumes:
+  errbook-data:
+  errbook-uploads:
