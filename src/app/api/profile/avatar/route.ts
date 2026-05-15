@@ -50,10 +50,14 @@ export async function POST(request: NextRequest) {
     await writeFile(filepath, buffer);
 
     return NextResponse.json(
-      { url: `/uploads/${session.user.id}/avatar/${filename}` },
+      { url: `/api/uploads/${session.user.id}/avatar/${filename}` },
       { status: 201 }
     );
-  } catch {
+  } catch (error) {
+    console.error("[avatar] 写入失败", {
+      uploadRoot,
+      error: error instanceof Error ? { message: error.message, stack: error.stack } : error,
+    });
     return NextResponse.json({ error: "头像上传失败" }, { status: 500 });
   }
 }

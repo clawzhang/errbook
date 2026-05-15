@@ -46,11 +46,15 @@ export async function POST(request: NextRequest) {
       const buffer = Buffer.from(await file.arrayBuffer());
       await writeFile(filepath, buffer);
 
-      urls.push(`/uploads/${session.user.id}/${filename}`);
+      urls.push(`/api/uploads/${session.user.id}/${filename}`);
     }
 
     return NextResponse.json({ urls }, { status: 201 });
-  } catch {
+  } catch (error) {
+    console.error("[upload] 写入失败", {
+      uploadRoot,
+      error: error instanceof Error ? { message: error.message, stack: error.stack } : error,
+    });
     return NextResponse.json({ error: "上传失败" }, { status: 500 });
   }
 }
