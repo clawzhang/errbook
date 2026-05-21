@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Edit3, Plus } from "lucide-react";
+import { Edit3, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -63,6 +63,8 @@ export function KnowledgePointSelector({
   const [points, setPoints] = useState<KnowledgePointNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [draftName, setDraftName] = useState("");
   const [saving, setSaving] = useState(false);
   const [mode, setMode] = useState<"create" | "edit">("create");
@@ -194,6 +196,29 @@ export function KnowledgePointSelector({
     setDialogOpen(true);
   }
 
+  async function handleDelete() {
+    if (!value) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/knowledge-points?id=${value}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (res.ok) {
+        onChange("");
+        await loadKnowledgePoints();
+        toast.success("知识点已删除");
+      } else {
+        toast.error(data.error || "删除失败");
+      }
+    } catch {
+      toast.error("删除失败");
+    } finally {
+      setDeleting(false);
+      setDeleteDialogOpen(false);
+    }
+  }
+
   useEffect(() => {
     void Promise.resolve().then(() => loadKnowledgePoints(subject));
   }, [loadKnowledgePoints, subject]);
@@ -281,6 +306,49 @@ export function KnowledgePointSelector({
             <Edit3 className="size-4" />
             <span className="sr-only">编辑知识点</span>
           </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => {
+              if (!selectedPoint) {
+                toast.error("请先选择知识点");
+                return;
+              }
+              setDeleteDialogOpen(true);
+            }}
+            disabled={!value}
+          >
+            <Trash2 className="size-4" />
+            <span className="sr-only">删除知识点</span>
+          </Button>
+          <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>确认删除知识点</DialogTitle>
+                <DialogDescription>
+                  删除「{selectedPoint?.name.trim()}」后，已关联该知识点的错题将取消关联，但错题本身不会被删除。此操作不可撤销。
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setDeleteDialogOpen(false)}
+                >
+                  取消
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                >
+                  {deleting ? "删除中..." : "确认删除"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 

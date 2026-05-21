@@ -6,6 +6,7 @@ import { DashboardHero, DashboardPage, SectionHeading } from "@/components/layou
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Printer } from "lucide-react";
 import { format } from "date-fns";
 
 interface TestSessionItem {
@@ -87,6 +88,17 @@ export default function TestsPage() {
                             ? ` · 完成时间：${format(new Date(item.completedAt), "yyyy-MM-dd HH:mm")}`
                             : ""}
                         </p>
+                        <div className="mt-3 flex gap-2">
+                          <Link
+                            href={`/test/${item.id}/print`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Button variant="outline" size="sm">
+                              <Printer className="mr-1 h-3.5 w-3.5" />
+                              打印试卷
+                            </Button>
+                          </Link>
+                        </div>
                       </div>
                       <div className="grid grid-cols-3 gap-3">
                         <div className="rounded-[1.2rem] bg-white px-4 py-3 text-center shadow-[0_10px_24px_rgba(66,104,168,0.06)]">

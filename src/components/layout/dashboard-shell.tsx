@@ -37,7 +37,7 @@ export function DashboardHero({
 
     return (
       <section className="dashboard-panel px-4 py-3 md:px-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-end">
           {actions ? <div className="flex flex-wrap items-center gap-2.5">{actions}</div> : null}
           {aside ? <div className="relative lg:min-w-[300px]">{aside}</div> : null}
         </div>

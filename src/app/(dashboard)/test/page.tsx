@@ -14,6 +14,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SUBJECTS } from "@/lib/constants";
 import { toast } from "sonner";
+import { ArrowLeft } from "lucide-react";
+import Link from "next/link";
 import { DashboardHero, DashboardPage } from "@/components/layout/dashboard-shell";
 
 export default function TestPage() {
@@ -62,6 +64,14 @@ export default function TestPage() {
         eyebrow="生成测试"
         title="从错题中抽取一场考核"
         description="选择学科、题量和出题模式，把错题重新变成可检验掌握情况的练习。"
+        actions={
+          <Link href="/tests">
+            <Button variant="outline" size="sm">
+              <ArrowLeft className="mr-1 h-4 w-4" />
+              返回考试记录
+            </Button>
+          </Link>
+        }
       />
 
       <Card>

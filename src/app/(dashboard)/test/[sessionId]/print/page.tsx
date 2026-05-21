@@ -139,9 +139,8 @@ export default function TestPrintPage({
               <section key={answer.id} className="print-question break-inside-avoid border-b border-slate-200 pb-7">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <h2 className="text-base font-bold text-slate-950">
-                    {index + 1}. 解答题
+                    第 {index + 1} 题
                   </h2>
-                  <span className="text-sm text-slate-500">（10 分）</span>
                 </div>
 
                 <QuestionContent

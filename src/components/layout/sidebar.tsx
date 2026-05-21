@@ -12,6 +12,7 @@ import {
   Grid2X2,
   LogOut,
   Menu,
+  NotebookPen,
   Settings,
   Users,
 } from "lucide-react";
@@ -74,12 +75,12 @@ function SidebarContent({
       <div className="rounded-[2rem] border border-white/70 bg-white/86 px-4 py-5 shadow-[0_18px_42px_rgba(59,101,176,0.08)] backdrop-blur-xl">
         <Link href="/" className="flex items-center gap-3">
           <div className="flex size-12 items-center justify-center rounded-[1.1rem] bg-linear-to-br from-primary via-primary to-sky-400 text-white shadow-[0_18px_34px_rgba(58,114,224,0.28)]">
-            <BookOpenText className="size-6" />
+            <NotebookPen className="size-6" />
           </div>
           <div>
             <p className="text-lg font-black tracking-[-0.04em] text-slate-950">错题集</p>
             <p className="text-xs font-medium text-slate-400">
-              学习更高效，是错题也是财富
+              错中学，学中进
             </p>
           </div>
         </Link>
@@ -208,11 +209,11 @@ export function MobileNav({
           </SheetTrigger>
           <Link href="/" className="flex items-center gap-2">
             <div className="flex size-10 items-center justify-center rounded-[1rem] bg-linear-to-br from-primary via-primary to-sky-400 text-white shadow-[0_18px_34px_rgba(58,114,224,0.24)]">
-              <BookOpenText className="size-5" />
+              <NotebookPen className="size-5" />
             </div>
             <div>
               <p className="text-sm font-black tracking-[-0.04em] text-slate-950">错题集</p>
-              <p className="text-[11px] text-slate-400">学习更高效，是错题也是财富</p>
+              <p className="text-[11px] text-slate-400">错中学，学中进</p>
             </div>
           </Link>
           <div className="w-9" />

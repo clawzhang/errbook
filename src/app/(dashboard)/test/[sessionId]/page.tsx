@@ -1,15 +1,22 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { SubjectTag } from "@/components/common/subject-tag";
 import { QuestionContent } from "@/components/common/question-content";
 import { toast } from "sonner";
-import { ArrowLeft, CheckCircle2, Printer, XCircle } from "lucide-react";
-import Link from "next/link";
-import { use } from "react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  ExternalLink,
+  Printer,
+  XCircle,
+} from "lucide-react";
 import { DashboardHero, DashboardPage, EmptyStateCard } from "@/components/layout/dashboard-shell";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -17,6 +24,7 @@ interface TestAnswer {
   id: string;
   userAnswer: string | null;
   isCorrect: boolean;
+  repeatWrongCount: number;
   error: {
     id: string;
     question: string;
@@ -36,6 +44,12 @@ interface TestData {
   answers: TestAnswer[];
 }
 
+interface GradeResult {
+  answerId: string;
+  isCorrect: boolean;
+  comment: string;
+}
+
 export default function TestSessionPage({
   params,
 }: {
@@ -46,11 +60,9 @@ export default function TestSessionPage({
   const [data, setData] = useState<TestData | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userAnswers, setUserAnswers] = useState<Record<string, string>>({});
-  const [revealed, setRevealed] = useState<Record<string, boolean>>({});
-  const [correctMap, setCorrectMap] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [finished, setFinished] = useState(false);
+  const [gradeResults, setGradeResults] = useState<GradeResult[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -60,11 +72,22 @@ export default function TestSessionPage({
         if (res.ok) {
           setData(test);
           if (test.status === "COMPLETED") {
-            setFinished(true);
+            const existingAnswers: Record<string, string> = {};
+            for (const a of test.answers) {
+              if (a.userAnswer) existingAnswers[a.id] = a.userAnswer;
+            }
+            setUserAnswers(existingAnswers);
+            setGradeResults(
+              test.answers.map((a: TestAnswer) => ({
+                answerId: a.id,
+                isCorrect: a.isCorrect,
+                comment: "",
+              }))
+            );
           }
         } else {
           toast.error("加载测试失败");
-          router.push("/test");
+          router.push("/tests");
         }
       } catch {
         toast.error("加载失败");
@@ -79,14 +102,6 @@ export default function TestSessionPage({
     setUserAnswers((prev) => ({ ...prev, [answerId]: value }));
   }
 
-  function handleReveal(answerId: string) {
-    setRevealed((prev) => ({ ...prev, [answerId]: true }));
-  }
-
-  function handleJudge(answerId: string, isCorrect: boolean) {
-    setCorrectMap((prev) => ({ ...prev, [answerId]: isCorrect }));
-  }
-
   async function handleSubmit() {
     if (!data) return;
     setSubmitting(true);
@@ -95,11 +110,9 @@ export default function TestSessionPage({
       const answers = data.answers.map((a) => ({
         answerId: a.id,
         userAnswer: userAnswers[a.id] || "",
-        isCorrect: correctMap[a.id] ?? false,
-        timeSpent: null,
       }));
 
-      const res = await fetch(`/api/test/${sessionId}`, {
+      const res = await fetch(`/api/test/${sessionId}/grade`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ answers }),
@@ -108,7 +121,7 @@ export default function TestSessionPage({
       const result = await res.json();
 
       if (res.ok) {
-        setFinished(true);
+        setGradeResults(result.results);
         setData((prev) =>
           prev
             ? {
@@ -118,8 +131,9 @@ export default function TestSessionPage({
               }
             : null
         );
+        toast.success("测试已提交，AI 打分完成");
       } else {
-        toast.error("提交失败");
+        toast.error(result.error || "提交失败");
       }
     } catch {
       toast.error("提交失败");
@@ -141,7 +155,9 @@ export default function TestSessionPage({
 
   if (!data) return null;
 
-  if (finished) {
+  const isCompleted = data.status === "COMPLETED" && gradeResults.length > 0;
+
+  if (isCompleted) {
     const accuracy =
       data.totalQuestions > 0
         ? Math.round((data.correctCount / data.totalQuestions) * 100)
@@ -152,39 +168,84 @@ export default function TestSessionPage({
         <DashboardHero
           eyebrow="测试结果"
           title="本场测试已完成"
-          description="这里会展示本次测试的总体正确率，以及每道题的大致答题结果。"
+          description="AI 已完成打分，查看每道题的判定结果。错误的题目可以跳转到原始错题记录。"
+          actions={
+            <Link href="/tests">
+              <Button variant="outline" size="sm">
+                <ArrowLeft className="mr-1 h-4 w-4" />
+                返回考试记录
+              </Button>
+            </Link>
+          }
         />
         <Card>
           <CardContent className="py-8 text-center">
-            <h2 className="mb-4 text-xl font-bold">测试完成</h2>
             <div className="mb-2 text-4xl font-black text-slate-950">{accuracy}%</div>
             <p className="text-muted-foreground">
               正确 {data.correctCount} / {data.totalQuestions} 题
             </p>
+          </CardContent>
+        </Card>
 
-            <div className="mt-6 space-y-2 text-left">
-              {data.answers.map((answer, i) => (
+        <Card>
+          <CardContent className="space-y-3 py-5">
+            {data.answers.map((answer, i) => {
+              const result = gradeResults.find((r) => r.answerId === answer.id);
+              const isCorrect = result?.isCorrect ?? answer.isCorrect;
+              return (
                 <div
                   key={answer.id}
-                  className="flex items-center gap-2 rounded-[1rem] bg-muted px-3 py-3"
+                  className={`rounded-[1.25rem] border px-4 py-4 ${
+                    isCorrect
+                      ? "border-green-200 bg-green-50/50"
+                      : "border-red-200 bg-red-50/50"
+                  }`}
                 >
-                  {correctMap[answer.id] ? (
-                    <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
-                  ) : (
-                    <XCircle className="h-4 w-4 shrink-0 text-red-500" />
-                  )}
-                  <span className="truncate text-sm">
-                    第{i + 1}题：{(answer.error.question || "").slice(0, 50)}...
-                  </span>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-2 min-w-0 flex-1">
+                      {isCorrect ? (
+                        <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-600" />
+                      ) : (
+                        <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-900">
+                          第 {i + 1} 题
+                        </p>
+                        <p className="mt-1 text-sm text-slate-600 line-clamp-2">
+                          {answer.error.question.slice(0, 80)}
+                          {answer.error.question.length > 80 ? "..." : ""}
+                        </p>
+                        {result?.comment && (
+                          <p className="mt-1 text-xs text-slate-500">
+                            AI 点评：{result.comment}
+                          </p>
+                        )}
+                        {!isCorrect && answer.repeatWrongCount > 1 && (
+                          <Badge variant="destructive" className="mt-2 text-xs">
+                            重复错误 {answer.repeatWrongCount} 次
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    {!isCorrect && (
+                      <Link href={`/errors/${answer.error.id}`}>
+                        <Button variant="ghost" size="sm">
+                          <ExternalLink className="mr-1 h-3.5 w-3.5" />
+                          查看错题
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
                 </div>
-              ))}
-            </div>
+              );
+            })}
           </CardContent>
         </Card>
 
         <div className="flex justify-center gap-3">
-          <Link href="/test">
-            <Button variant="outline">返回测试</Button>
+          <Link href="/tests">
+            <Button variant="outline">返回考试记录</Button>
           </Link>
           <Link href={`/test/${sessionId}/print`}>
             <Button variant="outline">
@@ -192,24 +253,30 @@ export default function TestSessionPage({
               打印试卷
             </Button>
           </Link>
-          <Link href="/review">
-            <Button>开始复习</Button>
+          <Link href="/test">
+            <Button>再来一场</Button>
           </Link>
         </div>
       </DashboardPage>
     );
   }
 
+  // 答题进行中
   const current = data.answers[currentIndex];
+  const answeredCount = Object.keys(userAnswers).filter(
+    (k) => userAnswers[k].trim().length > 0
+  ).length;
+  const allAnswered = answeredCount === data.answers.length;
+
   return (
     <DashboardPage className="gap-3">
       <DashboardHero
         eyebrow="进行中"
         title={data.title || "错题测试"}
-        description={`当前第 ${currentIndex + 1} / ${data.totalQuestions} 题。先独立作答，再查看答案并判断自己的掌握情况。`}
+        description={`当前第 ${currentIndex + 1} / ${data.totalQuestions} 题，已作答 ${answeredCount} 题。完成全部作答后统一提交 AI 打分。`}
         actions={
           <>
-            <Link href="/test">
+            <Link href="/tests">
               <Button variant="outline" size="sm">
                 <ArrowLeft className="mr-1 h-4 w-4" />
                 退出测试
@@ -233,7 +300,7 @@ export default function TestSessionPage({
                 subject={current.error.subject as "CHINESE" | "MATH" | "ENGLISH"}
               />
               <span className="text-sm text-muted-foreground">
-                第 {currentIndex + 1} 题
+                第 {currentIndex + 1} / {data.totalQuestions} 题
               </span>
             </div>
 
@@ -251,71 +318,58 @@ export default function TestSessionPage({
                 placeholder="输入你的答案..."
                 value={userAnswers[current.id] || ""}
                 onChange={(e) => handleAnswer(current.id, e.target.value)}
+                rows={4}
               />
             </div>
 
-            {!revealed[current.id] ? (
-              <Button className="w-full" variant="outline" onClick={() => handleReveal(current.id)}>
-                查看正确答案
+            <div className="flex items-center justify-between gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setCurrentIndex(currentIndex - 1)}
+                disabled={currentIndex === 0}
+              >
+                <ArrowLeft className="mr-1 h-4 w-4" />
+                上一题
               </Button>
-            ) : (
-              <div className="space-y-4">
-                <div className="rounded-[1.25rem] bg-green-50 p-4">
-                  <h4 className="mb-1 text-sm font-medium text-green-700">正确答案</h4>
-                  <QuestionContent
-                    content={current.error.correctAnswer}
-                    className="text-sm"
-                  />
-                </div>
 
-                {current.error.analysis ? (
-                  <div className="rounded-[1.25rem] bg-muted p-4">
-                    <h4 className="mb-1 text-sm font-medium">解析</h4>
-                    <QuestionContent
-                      content={current.error.analysis}
-                      className="text-sm"
-                    />
-                  </div>
-                ) : null}
-
-                <div>
-                  <h4 className="mb-2 text-sm font-medium">你答对了吗？</h4>
-                  <div className="flex gap-2">
-                    <Button
-                      variant={correctMap[current.id] === false ? "destructive" : "outline"}
-                      onClick={() => handleJudge(current.id, false)}
-                    >
-                      <XCircle className="mr-1 h-4 w-4" />
-                      答错了
-                    </Button>
-                    <Button
-                      variant={correctMap[current.id] === true ? "default" : "outline"}
-                      onClick={() => handleJudge(current.id, true)}
-                    >
-                      <CheckCircle2 className="mr-1 h-4 w-4" />
-                      答对了
-                    </Button>
-                  </div>
-                </div>
-
-                {currentIndex + 1 < data.answers.length ? (
-                  <Button
-                    className="w-full"
-                    onClick={() => setCurrentIndex(currentIndex + 1)}
-                    disabled={correctMap[current.id] === undefined}
+              <div className="flex gap-1.5 flex-wrap justify-center">
+                {data.answers.map((a, i) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => setCurrentIndex(i)}
+                    className={`h-7 w-7 rounded-full text-xs font-medium transition ${
+                      i === currentIndex
+                        ? "bg-primary text-white"
+                        : userAnswers[a.id]?.trim()
+                          ? "bg-green-100 text-green-700"
+                          : "bg-slate-100 text-slate-500"
+                    }`}
                   >
-                    下一题
-                  </Button>
-                ) : (
-                  <Button
-                    className="w-full"
-                    onClick={handleSubmit}
-                    disabled={submitting || Object.keys(correctMap).length < data.answers.length}
-                  >
-                    {submitting ? "提交中..." : "提交测试"}
-                  </Button>
-                )}
+                    {i + 1}
+                  </button>
+                ))}
               </div>
+
+              {currentIndex + 1 < data.answers.length ? (
+                <Button onClick={() => setCurrentIndex(currentIndex + 1)}>
+                  下一题
+                  <ArrowRight className="ml-1 h-4 w-4" />
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleSubmit}
+                  disabled={submitting || !allAnswered}
+                >
+                  {submitting ? "AI 打分中..." : "提交测试"}
+                </Button>
+              )}
+            </div>
+
+            {currentIndex + 1 === data.answers.length && !allAnswered && (
+              <p className="text-center text-sm text-amber-600">
+                还有 {data.answers.length - answeredCount} 题未作答，请全部完成后再提交
+              </p>
             )}
           </CardContent>
         </Card>

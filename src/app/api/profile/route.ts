@@ -10,7 +10,7 @@ const profileSchema = z.object({
 
 function isValidAvatarPath(value: string | null | undefined) {
   if (!value) return true;
-  return value.startsWith("/uploads/");
+  return value.startsWith("/api/uploads/");
 }
 
 export async function GET() {

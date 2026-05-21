@@ -73,6 +73,44 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function DELETE(request: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "未登录" }, { status: 401 });
+  }
+
+  const id = request.nextUrl.searchParams.get("id");
+  if (!id) {
+    return NextResponse.json({ error: "缺少知识点 ID" }, { status: 400 });
+  }
+
+  const point = await prisma.knowledgePoint.findUnique({
+    where: { id },
+    include: { children: { select: { id: true } } },
+  });
+
+  if (!point) {
+    return NextResponse.json({ error: "知识点不存在" }, { status: 404 });
+  }
+
+  if (point.children.length > 0) {
+    return NextResponse.json(
+      { error: "该知识点下有子知识点，请先删除子知识点" },
+      { status: 400 }
+    );
+  }
+
+  await prisma.$transaction([
+    prisma.error.updateMany({
+      where: { knowledgePointId: id },
+      data: { knowledgePointId: null },
+    }),
+    prisma.knowledgePoint.delete({ where: { id } }),
+  ]);
+
+  return NextResponse.json({ success: true });
+}
+
 export async function PUT(request: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {

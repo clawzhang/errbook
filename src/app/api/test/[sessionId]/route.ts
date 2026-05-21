@@ -39,7 +39,29 @@ export async function GET(
     return NextResponse.json({ error: "未找到测试" }, { status: 404 });
   }
 
-  return NextResponse.json(testSession);
+  const errorIds = testSession.answers.map((a) => a.errorId);
+  const wrongCounts = await prisma.testAnswer.groupBy({
+    by: ["errorId"],
+    where: {
+      errorId: { in: errorIds },
+      isCorrect: false,
+    },
+    _count: { errorId: true },
+  });
+
+  const wrongCountMap = Object.fromEntries(
+    wrongCounts.map((wc) => [wc.errorId, wc._count.errorId])
+  );
+
+  const enrichedAnswers = testSession.answers.map((a) => ({
+    ...a,
+    repeatWrongCount: wrongCountMap[a.errorId] || 0,
+  }));
+
+  return NextResponse.json({
+    ...testSession,
+    answers: enrichedAnswers,
+  });
 }
 
 export async function POST(
