@@ -1,0 +1,1 @@
+常用命令：`npm run dev` 启动开发环境；`npm run build` 执行生产构建；`npm run start` 启动生产服务；`npm run lint` 运行 ESLint。常用检索命令优先 `rg`，查看变更优先 `git diff -- <path>` 和 `git status --short`。这是 Darwin 环境，shell 为 zsh。

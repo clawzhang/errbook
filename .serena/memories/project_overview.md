@@ -1,0 +1,1 @@
+项目 errbook 是一个基于 Next.js 16 App Router 的错题本网站，主要功能包括错题录入、详情查看、复习记录、AI 分析和统计页面。技术栈为 TypeScript、React 19、Next.js 16、Prisma 7、SQLite、NextAuth、Tailwind CSS 4、shadcn/ui。代码主要位于 src/app、src/components、src/lib，数据库模型位于 prisma/schema.prisma。项目约定使用中文输出和中文注释，修改时优先最小侵入，避免保留无用兼容代码。
