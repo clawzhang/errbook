@@ -51,4 +51,4 @@ USER nextjs
 
 EXPOSE 3000
 
-CMD ["./scripts/docker-entrypoint.sh"]
+CMD ["sh", "./scripts/docker-entrypoint.sh"]
