@@ -17,6 +17,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NODE_ENV=production
 ENV DATABASE_URL=file:/app/data/dev.db
+# 清理可能存在的开发缓存
+RUN rm -rf .next
 RUN npx prisma generate
 RUN npm run build
 
@@ -51,4 +53,4 @@ USER nextjs
 
 EXPOSE 3000
 
-CMD ["sh", "./scripts/docker-entrypoint.sh"]
+CMD ["./scripts/docker-entrypoint.sh"]

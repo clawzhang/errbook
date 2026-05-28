@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { decryptApiKey } from "@/lib/encryption";
 
 interface AIConfig {
   baseUrl: string;
@@ -16,9 +17,18 @@ export async function getUserAIConfig(
 
   if (!user?.aiBaseUrl || !user?.aiApiKey || !user?.aiModel) return null;
 
+  // 解密 API 密钥
+  let apiKey: string;
+  try {
+    apiKey = decryptApiKey(user.aiApiKey);
+  } catch (error) {
+    console.error("解密 API 密钥失败:", error);
+    throw new Error("AI 配置无效，请重新设置 API 密钥");
+  }
+
   return {
     baseUrl: user.aiBaseUrl,
-    apiKey: user.aiApiKey,
+    apiKey,
     model: user.aiModel,
   };
 }
@@ -102,7 +112,6 @@ export function buildOCRPrompt(): ChatMessage {
   "correctAnswer": "正确答案（如果图片中能看到的话，否则留空字符串）",
   "analysis": "解题思路或解析（如果图片中能看到的话，否则留空字符串）",
   "subject": "CHINESE 或 MATH 或 ENGLISH（根据题目内容判断科目）",
-  "questionType": "题目类型编码，只能返回该科目支持的编码之一。语文支持 CHOICE、JUDGMENT、FILL_BLANK、READING、COMPOSITION、OTHER；数学支持 CHOICE、JUDGMENT、FILL_BLANK、APPLICATION、CALCULATION、OTHER；英语支持 CHOICE、JUDGMENT、FILL_BLANK、READING、WRITING、OTHER。如无法判断返回 OTHER",
   "knowledgePoint": "知识点名称（如"一元二次方程"、"阅读理解"等）",
   "errorReason": "可能的错误原因（如果可以推断的话）"
 }`,
