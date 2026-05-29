@@ -67,8 +67,25 @@ RUN npx prisma generate && \
     # 只保留当前平台的引擎
     find node_modules/.prisma/client -name "*.node" -not -name "*linux-musl*" -delete 2>/dev/null || true
 
-# 校验 Next standalone 产物，避免生成无法启动的镜像
-RUN test -f .next/standalone/server.js
+# 准备运行产物：优先使用 standalone，缺失时回退到完整 .next 输出
+RUN mkdir -p /tmp/app-output && \
+    if [ -f ".next/standalone/server.js" ]; then \
+        echo "✅ Using standalone output"; \
+        cp -a .next/standalone/. /tmp/app-output/ && \
+        mkdir -p /tmp/app-output/.next && \
+        cp -a .next/static /tmp/app-output/.next/static && \
+        cp -a public /tmp/app-output/public; \
+    else \
+        echo "⚠️  Standalone output not found, using full .next output"; \
+        cp -a .next /tmp/app-output/.next && \
+        cp -a public /tmp/app-output/public && \
+        cp package.json /tmp/app-output/package.json; \
+    fi && \
+    if [ ! -f "/tmp/app-output/server.js" ] && [ ! -f "/tmp/app-output/.next/BUILD_ID" ]; then \
+        echo "❌ Next.js runtime output is incomplete"; \
+        find /tmp/app-output -maxdepth 2 -type f | sort; \
+        exit 1; \
+    fi
 
 # ============================================
 # 阶段 5: 生产运行镜像（极致优化）
@@ -93,10 +110,8 @@ RUN apk add --no-cache openssl dumb-init && \
 # 只复制生产依赖（已清理）
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 
-# 复制 Next standalone 运行产物
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+# 复制构建产物（standalone 或完整 .next）
+COPY --from=builder --chown=nextjs:nodejs /tmp/app-output ./
 
 # 复制 Prisma（已优化）
 COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts ./prisma.config.ts
