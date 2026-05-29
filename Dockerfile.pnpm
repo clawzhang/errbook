@@ -58,14 +58,16 @@ RUN apk add --no-cache python3 make g++
 COPY --from=build-deps /app/node_modules ./node_modules
 COPY . .
 
-ENV DATABASE_URL=file:/app/data/dev.db
+ENV DATABASE_URL=file:/app/data/dev.db \
+    NODE_OPTIONS="--max-old-space-size=4096"
 
+# 生成 Prisma Client 并构建
 RUN npx prisma generate && \
-    pnpm run build && \
+    npm run build && \
     # 删除 source maps
-    find .next -name "*.map" -delete && \
+    find .next -name "*.map" -delete 2>/dev/null || true && \
     # 优化 Prisma
-    rm -rf node_modules/.prisma/client/libquery_engine-* && \
+    rm -rf node_modules/.prisma/client/libquery_engine-* 2>/dev/null || true && \
     find node_modules/.prisma/client -name "*.node" -not -name "*linux-musl*" -delete 2>/dev/null || true
 
 # ============================================

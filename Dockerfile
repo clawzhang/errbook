@@ -50,11 +50,14 @@ COPY --from=build-deps /app/node_modules ./node_modules
 # 复制源代码
 COPY . .
 
-ENV DATABASE_URL=file:/app/data/dev.db
+ENV DATABASE_URL=file:/app/data/dev.db \
+    NODE_OPTIONS="--max-old-space-size=4096"
 
 # 生成 Prisma Client 并构建
 RUN npx prisma generate && \
-    npm run build
+    npm run build && \
+    # 删除 source maps（可选）
+    find .next -name "*.map" -delete 2>/dev/null || true
 
 # ============================================
 # 阶段 5: 生产运行镜像（最小化）
