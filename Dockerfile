@@ -55,9 +55,10 @@ ENV DATABASE_URL=file:/app/data/dev.db \
 
 # 生成 Prisma Client 并构建
 RUN npx prisma generate && \
-    npm run build && \
-    # 删除 source maps
-    find .next -name "*.map" -delete 2>/dev/null || true
+    npm run build
+
+# 删除 source maps
+RUN find .next -name "*.map" -delete 2>/dev/null || true
 
 # 准备运行产物：优先使用 standalone，缺失时回退到完整 .next 输出
 RUN mkdir -p /tmp/app-output && \
