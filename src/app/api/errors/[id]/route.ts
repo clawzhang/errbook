@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { isQuestionTypeValid } from "@/lib/constants";
 import { z } from "zod";
 
 const updateErrorSchema = z.object({
   subject: z.enum(["CHINESE", "MATH", "ENGLISH"]).optional(),
-  questionType: z.string().trim().min(1).nullable().optional(),
   knowledgePointId: z.string().nullable().optional(),
   question: z.string().min(1).optional(),
   questionImages: z.array(z.string()).optional(),
@@ -70,25 +68,8 @@ export async function PUT(
 
     const data = result.data;
     const updateData: Record<string, unknown> = {};
-    const nextSubject =
-      data.subject ??
-      (
-        await prisma.error.findFirst({
-          where: { id, userId: session.user.id },
-          select: { subject: true },
-        })
-      )?.subject;
-
-    if (!nextSubject) {
-      return NextResponse.json({ error: "未找到该错题" }, { status: 404 });
-    }
-
-    if (data.questionType && !isQuestionTypeValid(nextSubject, data.questionType)) {
-      return NextResponse.json({ error: "题目类型与科目不匹配" }, { status: 400 });
-    }
 
     if (data.subject !== undefined) updateData.subject = data.subject;
-    if (data.questionType !== undefined) updateData.questionType = data.questionType;
     if (data.knowledgePointId !== undefined) updateData.knowledgePointId = data.knowledgePointId;
     if (data.question !== undefined) updateData.question = data.question;
     if (data.questionImages !== undefined) updateData.questionImages = JSON.stringify(data.questionImages);

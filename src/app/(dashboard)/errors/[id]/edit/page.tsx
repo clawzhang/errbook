@@ -12,7 +12,6 @@ export default function EditErrorPage({
   const { id } = use(params);
   const [defaultValues, setDefaultValues] = useState<null | {
     subject: string;
-    questionType: string | null;
     knowledgePointId: string | null;
     question: string;
     questionImages: string[];
@@ -31,7 +30,6 @@ export default function EditErrorPage({
       if (res.ok) {
         setDefaultValues({
           subject: data.error.subject,
-          questionType: data.error.questionType,
           knowledgePointId: data.error.knowledgePointId,
           question: data.error.question,
           questionImages: JSON.parse(data.error.questionImages || "[]"),

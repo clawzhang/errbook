@@ -44,4 +44,3 @@ next-env.d.ts
 .superpowers/
 dev.db
 public/uploads/
-tmp/

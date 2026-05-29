@@ -2,12 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getUserCurrentGrade } from "@/lib/grade-server";
-import { isQuestionTypeValid } from "@/lib/constants";
 import { z } from "zod";
 
 const createErrorSchema = z.object({
   subject: z.enum(["CHINESE", "MATH", "ENGLISH"]),
-  questionType: z.string().trim().min(1).nullable().optional(),
   knowledgePointId: z.string().nullable().optional(),
   knowledgePointName: z.string().trim().nullable().optional(),
   question: z.string().min(1, "题目内容不能为空"),
@@ -84,9 +82,6 @@ export async function POST(request: NextRequest) {
     }
 
     const data = result.data;
-    if (data.questionType && !isQuestionTypeValid(data.subject, data.questionType)) {
-      return NextResponse.json({ error: "题目类型与科目不匹配" }, { status: 400 });
-    }
     const currentGrade = await getUserCurrentGrade(session.user.id);
     const knowledgePointId =
       data.knowledgePointId ||
@@ -111,7 +106,6 @@ export async function POST(request: NextRequest) {
       data: {
         userId: session.user.id,
         subject: data.subject,
-        questionType: data.questionType || null,
         knowledgePointId,
         grade: currentGrade.grade,
         semester: currentGrade.semester,

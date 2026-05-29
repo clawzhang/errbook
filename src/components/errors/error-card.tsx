@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { SubjectTag } from "@/components/common/subject-tag";
 import { MasteryBadge } from "@/components/common/mastery-badge";
 import { QuestionContent } from "@/components/common/question-content";
-import { ERROR_SOURCES, getQuestionTypeLabel } from "@/lib/constants";
+import { ERROR_SOURCES } from "@/lib/constants";
 import { formatGradeSemester } from "@/lib/grade";
 import { format } from "date-fns";
 
@@ -18,7 +18,6 @@ interface ErrorCardProps {
     masteryLevel: string;
     source: string;
     sourceDetail?: string | null;
-    questionType?: string | null;
     nextReviewDate: string;
     createdAt: string;
     grade: number;
@@ -35,7 +34,6 @@ export function ErrorCard({ error, detailHref }: ErrorCardProps) {
       : error.question;
 
   const isOverdue = new Date(error.nextReviewDate) <= new Date();
-  const questionTypeLabel = getQuestionTypeLabel(error.subject, error.questionType);
 
   return (
     <Link href={detailHref || `/errors/${error.id}`}>
@@ -44,11 +42,6 @@ export function ErrorCard({ error, detailHref }: ErrorCardProps) {
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <SubjectTag subject={error.subject as "CHINESE" | "MATH" | "ENGLISH"} />
-              {questionTypeLabel ? (
-                <Badge variant="secondary" className="text-xs">
-                  {questionTypeLabel}
-                </Badge>
-              ) : null}
               {error.knowledgePoint && (
                 <Badge variant="outline" className="text-xs">
                   {error.knowledgePoint.name}

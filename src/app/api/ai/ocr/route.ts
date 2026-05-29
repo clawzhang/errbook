@@ -48,9 +48,6 @@ export async function POST(request: NextRequest) {
     try {
       const cleaned = result.replace(/```json\n?|```\n?/g, "").trim();
       parsed = JSON.parse(cleaned);
-      if (!parsed.questionType) {
-        parsed.questionType = "OTHER";
-      }
     } catch {
       parsed = {
         question: result,
@@ -58,7 +55,6 @@ export async function POST(request: NextRequest) {
         correctAnswer: "",
         analysis: "",
         subject: "MATH",
-        questionType: "OTHER",
         knowledgePoint: "",
         errorReason: "",
       };

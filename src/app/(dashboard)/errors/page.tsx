@@ -12,7 +12,6 @@ import { DashboardPage, EmptyStateCard } from "@/components/layout/dashboard-she
 interface ErrorItem {
   id: string;
   subject: string;
-  questionType: string | null;
   question: string;
   masteryLevel: string;
   source: string;
