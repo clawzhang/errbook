@@ -1,27 +1,22 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { NextRequest } from "next/server";
+import { withApiHandler } from "@/lib/api-handler";
 import { getUserAIConfig, callAI, buildOCRPrompt } from "@/lib/ai";
+import { ValidationError, ExternalServiceError } from "@/lib/errors";
 
-export async function POST(request: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "未登录" }, { status: 401 });
-  }
+export const POST = withApiHandler(
+  async (request: NextRequest) => {
+    const userId = (request as any).user.id;
 
-  const config = await getUserAIConfig(session.user.id);
-  if (!config) {
-    return NextResponse.json(
-      { error: "请先在设置中配置 AI 服务" },
-      { status: 400 }
-    );
-  }
+    const config = await getUserAIConfig(userId);
+    if (!config) {
+      throw new ValidationError("请先在设置中配置 AI 服务");
+    }
 
-  try {
     const formData = await request.formData();
     const imageFile = formData.get("image") as File | null;
 
     if (!imageFile) {
-      return NextResponse.json({ error: "请上传图片" }, { status: 400 });
+      throw new ValidationError("请上传图片");
     }
 
     const buffer = Buffer.from(await imageFile.arrayBuffer());
@@ -43,26 +38,28 @@ export async function POST(request: NextRequest) {
       },
     ];
 
-    const result = await callAI(config, messages, { temperature: 0.3 });
-    let parsed;
     try {
-      const cleaned = result.replace(/```json\n?|```\n?/g, "").trim();
-      parsed = JSON.parse(cleaned);
-    } catch {
-      parsed = {
-        question: result,
-        wrongAnswer: "",
-        correctAnswer: "",
-        analysis: "",
-        subject: "MATH",
-        knowledgePoint: "",
-        errorReason: "",
-      };
-    }
+      const result = await callAI(config, messages, { temperature: 0.3 });
+      let parsed;
+      try {
+        const cleaned = result.replace(/```json\n?|```\n?/g, "").trim();
+        parsed = JSON.parse(cleaned);
+      } catch {
+        parsed = {
+          question: result,
+          wrongAnswer: "",
+          correctAnswer: "",
+          analysis: "",
+          subject: "MATH",
+          knowledgePoint: "",
+          errorReason: "",
+        };
+      }
 
-    return NextResponse.json({ result: parsed });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "识别失败";
-    return NextResponse.json({ error: msg }, { status: 500 });
-  }
-}
+      return { result: parsed };
+    } catch (error) {
+      throw new ExternalServiceError("AI OCR", error);
+    }
+  },
+  { requireAuth: true }
+);

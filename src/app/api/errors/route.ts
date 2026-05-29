@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { NextRequest } from "next/server";
+import { withApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { getUserCurrentGrade } from "@/lib/grade-server";
 import { z } from "zod";
@@ -18,71 +18,59 @@ const createErrorSchema = z.object({
   sourceDetail: z.string().nullable().optional(),
 });
 
-export async function GET(request: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "未登录" }, { status: 401 });
-  }
+export const GET = withApiHandler(
+  async (request: NextRequest) => {
+    const userId = (request as any).user.id;
+    const { searchParams } = request.nextUrl;
 
-  const { searchParams } = request.nextUrl;
-  const subject = searchParams.get("subject") || undefined;
-  const masteryLevel = searchParams.get("masteryLevel") || undefined;
-  const knowledgePointId = searchParams.get("knowledgePointId") || undefined;
-  const source = searchParams.get("source") || undefined;
-  const needReview = searchParams.get("needReview") === "true";
-  const grade = searchParams.get("grade") || undefined;
-  const semester = searchParams.get("semester") || undefined;
-  const page = parseInt(searchParams.get("page") || "1");
-  const pageSize = parseInt(searchParams.get("pageSize") || "20");
-  const sort = searchParams.get("sort") || "createdAt";
-  const order = searchParams.get("order") || "desc";
+    const subject = searchParams.get("subject") || undefined;
+    const masteryLevel = searchParams.get("masteryLevel") || undefined;
+    const knowledgePointId = searchParams.get("knowledgePointId") || undefined;
+    const source = searchParams.get("source") || undefined;
+    const needReview = searchParams.get("needReview") === "true";
+    const grade = searchParams.get("grade") || undefined;
+    const semester = searchParams.get("semester") || undefined;
+    const page = parseInt(searchParams.get("page") || "1");
+    const pageSize = parseInt(searchParams.get("pageSize") || "20");
+    const sort = searchParams.get("sort") || "createdAt";
+    const order = searchParams.get("order") || "desc";
 
-  const where: Record<string, unknown> = { userId: session.user.id };
+    const where: Record<string, any> = { userId };
 
-  if (subject) where.subject = subject;
-  if (masteryLevel) where.masteryLevel = masteryLevel;
-  if (knowledgePointId) where.knowledgePointId = knowledgePointId;
-  if (source) where.source = source;
-  if (needReview) {
-    where.nextReviewDate = { lte: new Date() };
-  }
-  if (grade) {
-    where.grade = parseInt(grade);
-    if (semester) where.semester = semester;
-  }
-
-  const [items, total] = await Promise.all([
-    prisma.error.findMany({
-      where,
-      include: { knowledgePoint: { select: { id: true, name: true } } },
-      orderBy: { [sort]: order === "asc" ? "asc" : "desc" },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    }),
-    prisma.error.count({ where }),
-  ]);
-
-  return NextResponse.json({ items, total, page, pageSize });
-}
-
-export async function POST(request: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "未登录" }, { status: 401 });
-  }
-
-  try {
-    const body = await request.json();
-    const result = createErrorSchema.safeParse(body);
-
-    if (!result.success) {
-      const errors = result.error.flatten().fieldErrors;
-      const firstError = Object.values(errors)[0]?.[0] || "输入信息有误";
-      return NextResponse.json({ error: firstError }, { status: 400 });
+    if (subject) where.subject = subject as any;
+    if (masteryLevel) where.masteryLevel = parseInt(masteryLevel);
+    if (knowledgePointId) where.knowledgePointId = knowledgePointId;
+    if (source) where.source = source as any;
+    if (needReview) {
+      where.nextReviewDate = { lte: new Date() };
+    }
+    if (grade) {
+      where.grade = parseInt(grade);
+      if (semester) where.semester = semester as any;
     }
 
-    const data = result.data;
-    const currentGrade = await getUserCurrentGrade(session.user.id);
+    const [items, total] = await Promise.all([
+      prisma.error.findMany({
+        where,
+        include: { knowledgePoint: { select: { id: true, name: true } } },
+        orderBy: { [sort]: order === "asc" ? "asc" : "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.error.count({ where }),
+    ]);
+
+    return { items, total, page, pageSize };
+  },
+  { requireAuth: true }
+);
+
+export const POST = withApiHandler(
+  async (request: NextRequest) => {
+    const userId = (request as any).user.id;
+    const data = (request as any).validatedBody;
+
+    const currentGrade = await getUserCurrentGrade(userId);
     const knowledgePointId =
       data.knowledgePointId ||
       (
@@ -104,7 +92,7 @@ export async function POST(request: NextRequest) {
 
     const error = await prisma.error.create({
       data: {
-        userId: session.user.id,
+        userId,
         subject: data.subject,
         knowledgePointId,
         grade: currentGrade.grade,
@@ -121,8 +109,7 @@ export async function POST(request: NextRequest) {
       include: { knowledgePoint: { select: { id: true, name: true } } },
     });
 
-    return NextResponse.json({ error }, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "创建失败" }, { status: 500 });
-  }
-}
+    return { error };
+  },
+  { requireAuth: true, bodySchema: createErrorSchema }
+);

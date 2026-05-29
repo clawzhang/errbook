@@ -45,7 +45,7 @@ type MessageContent =
 export async function callAI(
   config: AIConfig,
   messages: ChatMessage[],
-  options?: { temperature?: number; maxTokens?: number }
+  options?: { temperature?: number; maxTokens?: number; timeout?: number }
 ): Promise<string> {
   const normalizedBaseUrl = config.baseUrl.replace(/\/+$/, "");
   const url = normalizedBaseUrl.endsWith("/v1")
@@ -59,46 +59,65 @@ export async function callAI(
     max_tokens: options?.maxTokens ?? 2000,
   };
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`AI 请求失败 (${res.status}): ${text.slice(0, 200)}`);
-  }
-
-  const resClone = res.clone();
-  let data: {
-    choices?: Array<{
-      message?: {
-        content?: string;
-      };
-    }>;
-  };
+  // 添加超时控制
+  const controller = new AbortController();
+  const timeoutMs = options?.timeout ?? 60000; // 默认 60 秒超时
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    data = await res.json();
-  } catch {
-    const text = await resClone.text().catch(() => "");
-    const preview = text.replace(/\s+/g, " ").slice(0, 120);
-    throw new Error(
-      `AI 服务返回了非 JSON 响应，请确认 Base URL 指向兼容 OpenAI 的接口。响应片段：${preview || "空响应"}`
-    );
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`AI 请求失败 (${res.status}): ${text.slice(0, 200)}`);
+    }
+
+    const resClone = res.clone();
+    let data: {
+      choices?: Array<{
+        message?: {
+          content?: string;
+        };
+      }>;
+    };
+
+    try {
+      data = await res.json();
+    } catch {
+      const text = await resClone.text().catch(() => "");
+      const preview = text.replace(/\s+/g, " ").slice(0, 120);
+      throw new Error(
+        `AI 服务返回了非 JSON 响应，请确认 Base URL 指向兼容 OpenAI 的接口。响应片段：${preview || "空响应"}`
+      );
+    }
+
+    const content = data.choices?.[0]?.message?.content;
+
+    if (!content) {
+      throw new Error("AI 未返回有效内容，请检查所选模型是否支持聊天补全接口");
+    }
+
+    return content;
+  } catch (error) {
+    clearTimeout(timeoutId);
+
+    // 处理超时错误
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`AI 请求超时（${timeoutMs / 1000}秒），请稍后重试`);
+    }
+
+    throw error;
   }
-
-  const content = data.choices?.[0]?.message?.content;
-
-  if (!content) {
-    throw new Error("AI 未返回有效内容，请检查所选模型是否支持聊天补全接口");
-  }
-
-  return content;
 }
 
 export function buildOCRPrompt(): ChatMessage {

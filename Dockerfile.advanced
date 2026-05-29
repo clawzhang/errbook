@@ -1,63 +1,73 @@
 # syntax=docker/dockerfile:1.7
 
 # ============================================
-# 阶段 1: 基础镜像（Alpine Linux，最小体积）
+# 进阶优化版 Dockerfile
+# 预计镜像大小：150-200MB（从 320MB 减少 40-50%）
+# ============================================
+
+# ============================================
+# 阶段 1: 基础镜像
 # ============================================
 FROM node:22-alpine AS base
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1 \
     NODE_ENV=production
 
-# 只安装运行时必需的依赖
 RUN apk add --no-cache libc6-compat openssl
 
 # ============================================
-# 阶段 2: 依赖安装（分离生产和开发依赖）
+# 阶段 2: 依赖安装（生产依赖）
 # ============================================
 FROM base AS deps
 
 COPY package.json package-lock.json ./
 
-# 只安装生产依赖，清理缓存
-RUN npm ci --omit=dev --ignore-scripts && \
-    npm cache clean --force
+# 只安装生产依赖，跳过可选依赖，清理缓存
+RUN npm ci --omit=dev --omit=optional --ignore-scripts && \
+    npm cache clean --force && \
+    # 删除不必要的文件
+    find /app/node_modules -name "*.md" -delete && \
+    find /app/node_modules -name "*.ts" -not -name "*.d.ts" -delete && \
+    find /app/node_modules -name "test" -type d -exec rm -rf {} + 2>/dev/null || true && \
+    find /app/node_modules -name "tests" -type d -exec rm -rf {} + 2>/dev/null || true && \
+    find /app/node_modules -name "__tests__" -type d -exec rm -rf {} + 2>/dev/null || true && \
+    find /app/node_modules -name "*.spec.js" -delete && \
+    find /app/node_modules -name "*.test.js" -delete
 
 # ============================================
-# 阶段 3: 构建依赖（包含开发依赖）
+# 阶段 3: 构建依赖
 # ============================================
 FROM base AS build-deps
 
-# 安装构建工具
 RUN apk add --no-cache python3 make g++
 
 COPY package.json package-lock.json ./
-
-# 安装所有依赖（包括 devDependencies）
-RUN npm ci && \
-    npm cache clean --force
+RUN npm ci && npm cache clean --force
 
 # ============================================
 # 阶段 4: 构建应用
 # ============================================
 FROM base AS builder
 
-# 安装构建工具
 RUN apk add --no-cache python3 make g++
 
-# 复制所有依赖
 COPY --from=build-deps /app/node_modules ./node_modules
-
-# 复制源代码
 COPY . .
 
 ENV DATABASE_URL=file:/app/data/dev.db
 
 # 生成 Prisma Client 并构建
 RUN npx prisma generate && \
-    npm run build
+    npm run build && \
+    # 删除 source maps
+    find .next -name "*.map" -delete && \
+    # 删除不必要的 Prisma 文件
+    rm -rf node_modules/.prisma/client/libquery_engine-* && \
+    # 只保留当前平台的引擎
+    find node_modules/.prisma/client -name "*.node" -not -name "*linux-musl*" -delete 2>/dev/null || true
 
 # ============================================
-# 阶段 5: 生产运行镜像（最小化）
+# 阶段 5: 生产运行镜像（极致优化）
 # ============================================
 FROM node:22-alpine AS runner
 WORKDIR /app
@@ -69,22 +79,22 @@ ENV NODE_ENV=production \
     DATABASE_URL=file:/app/data/dev.db \
     UPLOAD_DIR=/app/public/uploads
 
-# 安装运行时依赖和 dumb-init
+# 只安装运行时必需的依赖
 RUN apk add --no-cache openssl dumb-init && \
     addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs && \
     mkdir -p /app/data /app/public/uploads && \
     chown -R nextjs:nodejs /app
 
-# 只复制生产依赖（从 deps 阶段）
+# 只复制生产依赖（已清理）
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 
-# 复制构建产物
+# 复制构建产物（已删除 source maps）
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# 复制 Prisma 相关文件
+# 复制 Prisma（已优化）
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 
@@ -96,6 +106,5 @@ USER nextjs
 
 EXPOSE 3000
 
-# 使用 dumb-init 优雅处理信号
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 CMD ["./scripts/docker-entrypoint.sh"]

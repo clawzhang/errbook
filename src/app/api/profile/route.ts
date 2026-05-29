@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
-import { auth } from "@/lib/auth";
+import { withApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { NotFoundError, ValidationError } from "@/lib/errors";
 
 const profileSchema = z.object({
   name: z.string().trim().min(2, "用户名至少2个字符").max(20, "用户名最多20个字符"),
@@ -13,56 +14,44 @@ function isValidAvatarPath(value: string | null | undefined) {
   return value.startsWith("/api/uploads/");
 }
 
-export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "未登录" }, { status: 401 });
-  }
+export const GET = withApiHandler(
+  async (request: NextRequest) => {
+    const userId = (request as any).user.id;
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { email: true, name: true, avatar: true },
-  });
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, name: true, avatar: true },
+    });
 
-  if (!user) {
-    return NextResponse.json({ error: "用户不存在" }, { status: 404 });
-  }
-
-  return NextResponse.json(user);
-}
-
-export async function PUT(request: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "未登录" }, { status: 401 });
-  }
-
-  try {
-    const body = await request.json();
-    const result = profileSchema.safeParse(body);
-
-    if (!result.success) {
-      const firstError =
-        Object.values(result.error.flatten().fieldErrors)[0]?.[0] || "输入信息有误";
-      return NextResponse.json({ error: firstError }, { status: 400 });
+    if (!user) {
+      throw new NotFoundError("用户");
     }
 
-    const avatar = result.data.avatar || null;
+    return user;
+  },
+  { requireAuth: true }
+);
+
+export const PUT = withApiHandler(
+  async (request: NextRequest) => {
+    const userId = (request as any).user.id;
+    const data = (request as any).validatedBody;
+
+    const avatar = data.avatar || null;
     if (!isValidAvatarPath(avatar)) {
-      return NextResponse.json({ error: "头像地址无效" }, { status: 400 });
+      throw new ValidationError("头像地址无效");
     }
 
     const user = await prisma.user.update({
-      where: { id: session.user.id },
+      where: { id: userId },
       data: {
-        name: result.data.name,
+        name: data.name,
         avatar,
       },
       select: { email: true, name: true, avatar: true },
     });
 
-    return NextResponse.json(user);
-  } catch {
-    return NextResponse.json({ error: "保存失败" }, { status: 500 });
-  }
-}
+    return user;
+  },
+  { requireAuth: true, bodySchema: profileSchema }
+);

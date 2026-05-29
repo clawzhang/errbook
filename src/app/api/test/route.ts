@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { NextRequest } from "next/server";
+import { withApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { ValidationError } from "@/lib/errors";
 import { z } from "zod";
 
 const createTestSchema = z.object({
@@ -14,25 +15,13 @@ const createTestSchema = z.object({
   mode: z.enum(["RANDOM", "WEAKEST"]).default("RANDOM"),
 });
 
-export async function POST(request: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "未登录" }, { status: 401 });
-  }
+export const POST = withApiHandler(
+  async (request: NextRequest) => {
+    const userId = (request as any).user.id;
+    const { subject, knowledgePointIds, masteryLevels, count, mode } = (request as any).validatedBody;
 
-  try {
-    const body = await request.json();
-    const result = createTestSchema.safeParse(body);
-
-    if (!result.success) {
-      return NextResponse.json({ error: "参数错误" }, { status: 400 });
-    }
-
-    const { subject, knowledgePointIds, masteryLevels, count, mode } =
-      result.data;
-
-    const where: Record<string, unknown> = {
-      userId: session.user.id,
+    const where: Record<string, any> = {
+      userId,
       subject,
     };
 
@@ -46,10 +35,7 @@ export async function POST(request: NextRequest) {
     const candidates = await prisma.error.findMany({ where });
 
     if (candidates.length === 0) {
-      return NextResponse.json(
-        { error: "没有符合条件的错题" },
-        { status: 400 }
-      );
+      throw new ValidationError("没有符合条件的错题");
     }
 
     let selected = candidates;
@@ -79,7 +65,7 @@ export async function POST(request: NextRequest) {
 
     const testSession = await prisma.testSession.create({
       data: {
-        userId: session.user.id,
+        userId,
         title: `${subjectLabels[subject]}错题测试`,
         config: JSON.stringify({
           subject,
@@ -111,14 +97,10 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json(
-      {
-        sessionId: testSession.id,
-        totalQuestions: testSession.totalQuestions,
-      },
-      { status: 201 }
-    );
-  } catch {
-    return NextResponse.json({ error: "创建测试失败" }, { status: 500 });
-  }
-}
+    return {
+      sessionId: testSession.id,
+      totalQuestions: testSession.totalQuestions,
+    };
+  },
+  { requireAuth: true, bodySchema: createTestSchema }
+);

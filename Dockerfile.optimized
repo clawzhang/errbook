@@ -1,0 +1,98 @@
+# syntax=docker/dockerfile:1.7
+
+# ============================================
+# 阶段 1: 基础镜像（使用 Alpine 减小体积）
+# ============================================
+FROM node:22-alpine AS base
+WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# 只安装运行时必需的依赖
+RUN apk add --no-cache \
+    libc6-compat \
+    openssl
+
+# ============================================
+# 阶段 2: 依赖安装（使用缓存优化）
+# ============================================
+FROM base AS deps
+
+# 只复制依赖文件，利用 Docker 缓存
+COPY package.json package-lock.json ./
+
+# 使用 npm ci 并清理缓存
+RUN npm ci --omit=dev && \
+    npm cache clean --force
+
+# ============================================
+# 阶段 3: 构建阶段
+# ============================================
+FROM base AS builder
+
+# 安装构建时需要的依赖
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++
+
+# 复制生产依赖
+COPY --from=deps /app/node_modules ./node_modules
+
+# 复制源代码
+COPY . .
+
+# 设置环境变量
+ENV NODE_ENV=production
+ENV DATABASE_URL=file:/app/data/dev.db
+
+# 清理并构建
+RUN rm -rf .next && \
+    npx prisma generate && \
+    npm run build && \
+    # 清理不需要的文件
+    rm -rf src && \
+    rm -rf .git && \
+    rm -rf .github && \
+    rm -rf tests && \
+    rm -rf docs
+
+# ============================================
+# 阶段 4: 生产运行镜像（最小化）
+# ============================================
+FROM node:22-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+ENV DATABASE_URL=file:/app/data/dev.db
+ENV UPLOAD_DIR=/app/public/uploads
+
+# 只安装运行时必需的依赖
+RUN apk add --no-cache \
+    openssl \
+    dumb-init && \
+    addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs && \
+    mkdir -p /app/data /app/public/uploads && \
+    chown -R nextjs:nodejs /app
+
+# 只复制必需的文件
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=nextjs:nodejs /app/scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
+
+# 确保脚本可执行
+RUN chmod +x ./scripts/docker-entrypoint.sh
+
+USER nextjs
+
+EXPOSE 3000
+
+# 使用 dumb-init 处理信号
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["./scripts/docker-entrypoint.sh"]

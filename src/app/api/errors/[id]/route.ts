@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { NextRequest } from "next/server";
+import { withApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { NotFoundError } from "@/lib/errors";
 import { z } from "zod";
 
 const updateErrorSchema = z.object({
@@ -17,60 +18,43 @@ const updateErrorSchema = z.object({
   masteryLevel: z.enum(["NOT_MASTERED", "PARTIALLY_MASTERED", "MASTERED"]).optional(),
 });
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "未登录" }, { status: 401 });
-  }
+export const GET = withApiHandler(
+  async (_request: NextRequest, { params }) => {
+    const userId = (_request as any).user.id;
+    const { id } = await params;
 
-  const { id } = await params;
-  const error = await prisma.error.findFirst({
-    where: { id, userId: session.user.id },
-    include: {
-      knowledgePoint: { select: { id: true, name: true } },
-      reviews: {
-        orderBy: { createdAt: "desc" },
-        take: 10,
+    const error = await prisma.error.findFirst({
+      where: { id, userId },
+      include: {
+        knowledgePoint: { select: { id: true, name: true } },
+        reviews: {
+          orderBy: { createdAt: "desc" },
+          take: 10,
+        },
       },
-    },
-  });
+    });
 
-  if (!error) {
-    return NextResponse.json({ error: "未找到该错题" }, { status: 404 });
-  }
-
-  return NextResponse.json({ error });
-}
-
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "未登录" }, { status: 401 });
-  }
-
-  const { id } = await params;
-
-  try {
-    const body = await request.json();
-    const result = updateErrorSchema.safeParse(body);
-
-    if (!result.success) {
-      const errors = result.error.flatten().fieldErrors;
-      const firstError = Object.values(errors)[0]?.[0] || "输入信息有误";
-      return NextResponse.json({ error: firstError }, { status: 400 });
+    if (!error) {
+      throw new NotFoundError("错题");
     }
 
-    const data = result.data;
-    const updateData: Record<string, unknown> = {};
+    return { error };
+  },
+  { requireAuth: true }
+);
+
+export const PUT = withApiHandler(
+  async (request: NextRequest, { params }) => {
+    const userId = (request as any).user.id;
+    const data = (request as any).validatedBody;
+    const { id } = await params;
+
+    const updateData: Record<string, any> = {};
 
     if (data.subject !== undefined) updateData.subject = data.subject;
-    if (data.knowledgePointId !== undefined) updateData.knowledgePointId = data.knowledgePointId;
+    if (data.knowledgePointId !== undefined) {
+      updateData.knowledgePointId = data.knowledgePointId;
+    }
     if (data.question !== undefined) updateData.question = data.question;
     if (data.questionImages !== undefined) updateData.questionImages = JSON.stringify(data.questionImages);
     if (data.wrongAnswer !== undefined) updateData.wrongAnswer = data.wrongAnswer;
@@ -94,32 +78,23 @@ export async function PUT(
     }
 
     const error = await prisma.error.update({
-      where: { id, userId: session.user.id },
+      where: { id, userId },
       data: updateData,
       include: { knowledgePoint: { select: { id: true, name: true } } },
     });
 
-    return NextResponse.json({ error });
-  } catch {
-    return NextResponse.json({ error: "更新失败" }, { status: 500 });
-  }
-}
+    return { error };
+  },
+  { requireAuth: true, bodySchema: updateErrorSchema }
+);
 
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "未登录" }, { status: 401 });
-  }
+export const DELETE = withApiHandler(
+  async (_request: NextRequest, { params }) => {
+    const userId = (_request as any).user.id;
+    const { id } = await params;
 
-  const { id } = await params;
-
-  try {
-    await prisma.error.delete({ where: { id, userId: session.user.id } });
-    return NextResponse.json({ success: true });
-  } catch {
-    return NextResponse.json({ error: "删除失败" }, { status: 500 });
-  }
-}
+    await prisma.error.delete({ where: { id, userId } });
+    return { success: true };
+  },
+  { requireAuth: true }
+);
