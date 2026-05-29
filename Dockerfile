@@ -56,8 +56,22 @@ ENV DATABASE_URL=file:/app/data/dev.db \
 # 生成 Prisma Client 并构建
 RUN npx prisma generate && \
     npm run build && \
-    # 删除 source maps（可选）
-    find .next -name "*.map" -delete 2>/dev/null || true
+    # 验证并准备输出
+    if [ -d ".next/standalone" ]; then \
+        echo "✅ Standalone output generated"; \
+        mkdir -p /tmp/app-output && \
+        cp -r .next/standalone/* /tmp/app-output/ && \
+        cp -r .next/static /tmp/app-output/.next/static && \
+        cp -r public /tmp/app-output/public; \
+    else \
+        echo "⚠️  Standalone not found, preparing full output"; \
+        mkdir -p /tmp/app-output && \
+        cp -r .next /tmp/app-output/.next && \
+        cp -r public /tmp/app-output/public && \
+        cp package.json /tmp/app-output/; \
+    fi && \
+    # 删除 source maps
+    find /tmp/app-output -name "*.map" -delete 2>/dev/null || true
 
 # ============================================
 # 阶段 5: 生产运行镜像（最小化）
@@ -82,10 +96,8 @@ RUN apk add --no-cache openssl dumb-init && \
 # 只复制生产依赖（从 deps 阶段）
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 
-# 复制构建产物
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# 复制构建产物（从临时目录）
+COPY --from=builder --chown=nextjs:nodejs /tmp/app-output ./
 
 # 复制 Prisma 相关文件
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
