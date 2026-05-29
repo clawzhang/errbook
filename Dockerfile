@@ -56,22 +56,23 @@ ENV DATABASE_URL=file:/app/data/dev.db \
 # 生成 Prisma Client 并构建
 RUN npx prisma generate && \
     npm run build && \
-    # 验证并准备输出
+    # 删除 source maps
+    find .next -name "*.map" -delete 2>/dev/null || true
+
+# 准备输出目录
+RUN mkdir -p /tmp/app-output && \
     if [ -d ".next/standalone" ]; then \
-        echo "✅ Standalone output generated"; \
-        mkdir -p /tmp/app-output && \
+        echo "✅ Using standalone output"; \
         cp -r .next/standalone/* /tmp/app-output/ && \
+        mkdir -p /tmp/app-output/.next && \
         cp -r .next/static /tmp/app-output/.next/static && \
         cp -r public /tmp/app-output/public; \
     else \
-        echo "⚠️  Standalone not found, preparing full output"; \
-        mkdir -p /tmp/app-output && \
+        echo "⚠️  Using full .next output"; \
         cp -r .next /tmp/app-output/.next && \
         cp -r public /tmp/app-output/public && \
-        cp package.json /tmp/app-output/; \
-    fi && \
-    # 删除 source maps
-    find /tmp/app-output -name "*.map" -delete 2>/dev/null || true
+        cp package.json /tmp/app-output/package.json; \
+    fi
 
 # ============================================
 # 阶段 5: 生产运行镜像（最小化）
