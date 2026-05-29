@@ -110,6 +110,7 @@ model Error {
   id               String        @id @default(cuid())
   userId           String
   subject          Subject
+  questionType     String?
   knowledgePointId String?
   grade            Int           @default(1)
   semester         String        @default("FIRST")

@@ -1,7 +1,6 @@
-import { NextRequest } from "next/server";
-import { withApiHandler } from "@/lib/api-handler";
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { NotFoundError, ValidationError, ConflictError } from "@/lib/errors";
 import { z } from "zod";
 
 const subjectSchema = z.enum(["CHINESE", "MATH", "ENGLISH"]);
@@ -17,31 +16,47 @@ const updateKnowledgePointSchema = z.object({
   name: z.string().trim().min(1, "知识点名称不能为空"),
 });
 
-export const GET = withApiHandler(
-  async (request: NextRequest) => {
-    const subject = request.nextUrl.searchParams.get("subject");
-    if (!subject) {
-      throw new ValidationError("缺少科目参数");
+export async function GET(request: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "未登录" }, { status: 401 });
+  }
+
+  const subject = request.nextUrl.searchParams.get("subject");
+  if (!subject) {
+    return NextResponse.json({ error: "缺少科目参数" }, { status: 400 });
+  }
+
+  const points = await prisma.knowledgePoint.findMany({
+    where: {
+      subject: subject as "CHINESE" | "MATH" | "ENGLISH",
+      parentId: null,
+    },
+    include: { children: { orderBy: { sortOrder: "asc" } } },
+    orderBy: { sortOrder: "asc" },
+  });
+
+  return NextResponse.json(points);
+}
+
+export async function POST(request: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "未登录" }, { status: 401 });
+  }
+
+  try {
+    const body = await request.json();
+    const result = createKnowledgePointSchema.safeParse(body);
+
+    if (!result.success) {
+      const firstError =
+        Object.values(result.error.flatten().fieldErrors)[0]?.[0] ||
+        "输入信息有误";
+      return NextResponse.json({ error: firstError }, { status: 400 });
     }
 
-    const points = await prisma.knowledgePoint.findMany({
-      where: {
-        subject: subject as "CHINESE" | "MATH" | "ENGLISH",
-        parentId: null,
-      },
-      include: { children: { orderBy: { sortOrder: "asc" } } },
-      orderBy: { sortOrder: "asc" },
-    });
-
-    return points;
-  },
-  { requireAuth: true }
-);
-
-export const POST = withApiHandler(
-  async (request: NextRequest) => {
-    const { subject, name, parentId } = (request as any).validatedBody;
-
+    const { subject, name, parentId } = result.data;
     const point = await prisma.knowledgePoint.upsert({
       where: { subject_name: { subject, name } },
       create: {
@@ -52,75 +67,95 @@ export const POST = withApiHandler(
       update: {},
     });
 
-    return point;
-  },
-  { requireAuth: true, bodySchema: createKnowledgePointSchema }
-);
+    return NextResponse.json(point, { status: 201 });
+  } catch {
+    return NextResponse.json({ error: "创建知识点失败" }, { status: 500 });
+  }
+}
 
-export const DELETE = withApiHandler(
-  async (request: NextRequest) => {
-    const id = request.nextUrl.searchParams.get("id");
-    if (!id) {
-      throw new ValidationError("缺少知识点 ID");
+export async function DELETE(request: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "未登录" }, { status: 401 });
+  }
+
+  const id = request.nextUrl.searchParams.get("id");
+  if (!id) {
+    return NextResponse.json({ error: "缺少知识点 ID" }, { status: 400 });
+  }
+
+  const point = await prisma.knowledgePoint.findUnique({
+    where: { id },
+    include: { children: { select: { id: true } } },
+  });
+
+  if (!point) {
+    return NextResponse.json({ error: "知识点不存在" }, { status: 404 });
+  }
+
+  if (point.children.length > 0) {
+    return NextResponse.json(
+      { error: "该知识点下有子知识点，请先删除子知识点" },
+      { status: 400 }
+    );
+  }
+
+  await prisma.$transaction([
+    prisma.error.updateMany({
+      where: { knowledgePointId: id },
+      data: { knowledgePointId: null },
+    }),
+    prisma.knowledgePoint.delete({ where: { id } }),
+  ]);
+
+  return NextResponse.json({ success: true });
+}
+
+export async function PUT(request: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "未登录" }, { status: 401 });
+  }
+
+  try {
+    const body = await request.json();
+    const result = updateKnowledgePointSchema.safeParse(body);
+
+    if (!result.success) {
+      const firstError =
+        Object.values(result.error.flatten().fieldErrors)[0]?.[0] ||
+        "输入信息有误";
+      return NextResponse.json({ error: firstError }, { status: 400 });
     }
-
-    const point = await prisma.knowledgePoint.findUnique({
-      where: { id },
-      include: { children: { select: { id: true } } },
-    });
-
-    if (!point) {
-      throw new NotFoundError("知识点");
-    }
-
-    if (point.children.length > 0) {
-      throw new ValidationError("该知识点下有子知识点，请先删除子知识点");
-    }
-
-    await prisma.$transaction([
-      prisma.error.updateMany({
-        where: { knowledgePointId: id },
-        data: { knowledgePointId: null },
-      }),
-      prisma.knowledgePoint.delete({ where: { id } }),
-    ]);
-
-    return { success: true };
-  },
-  { requireAuth: true }
-);
-
-export const PUT = withApiHandler(
-  async (request: NextRequest) => {
-    const data = (request as any).validatedBody;
 
     const existing = await prisma.knowledgePoint.findUnique({
-      where: { id: data.id },
+      where: { id: result.data.id },
     });
 
     if (!existing) {
-      throw new NotFoundError("知识点");
+      return NextResponse.json({ error: "知识点不存在" }, { status: 404 });
     }
 
     const duplicate = await prisma.knowledgePoint.findUnique({
       where: {
         subject_name: {
           subject: existing.subject,
-          name: data.name,
+          name: result.data.name,
         },
       },
     });
 
     if (duplicate && duplicate.id !== existing.id) {
-      throw new ConflictError("同学科下已存在该知识点");
+      return NextResponse.json({ error: "同学科下已存在该知识点" }, { status: 400 });
     }
 
     const point = await prisma.knowledgePoint.update({
       where: { id: existing.id },
-      data: { name: data.name },
+      data: { name: result.data.name },
     });
 
-    return point;
-  },
-  { requireAuth: true, bodySchema: updateKnowledgePointSchema }
-);
+    return NextResponse.json(point);
+  } catch {
+    return NextResponse.json({ error: "更新知识点失败" }, { status: 500 });
+  }
+}

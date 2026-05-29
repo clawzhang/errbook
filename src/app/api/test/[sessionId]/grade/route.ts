@@ -1,7 +1,6 @@
-import { NextRequest } from "next/server";
-import { withApiHandler } from "@/lib/api-handler";
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { NotFoundError, ValidationError } from "@/lib/errors";
 import { getUserAIConfig, callAI } from "@/lib/ai";
 import { calculateSM2 } from "@/lib/sm2";
 
@@ -82,8 +81,7 @@ ${questionsText}`;
         comment: aiResult?.comment ?? "",
       };
     });
-  } catch (error) {
-    console.error("AI 批改失败，使用备用方案:", error);
+  } catch {
     return gradeFallback(dbAnswers, userAnswers);
   }
 }
@@ -108,117 +106,121 @@ function gradeFallback(
   });
 }
 
-export const POST = withApiHandler(
-  async (request: NextRequest, { params }) => {
-    const userId = (request as any).user.id;
-    const { sessionId } = await params;
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "未登录" }, { status: 401 });
+  }
 
-    const testSession = await prisma.testSession.findFirst({
-      where: { id: sessionId, userId },
-      include: {
-        answers: {
-          include: {
-            error: {
-              select: {
-                id: true,
-                question: true,
-                correctAnswer: true,
-                subject: true,
-                easeFactor: true,
-                interval: true,
-                repetitions: true,
-              },
+  const { sessionId } = await params;
+
+  const testSession = await prisma.testSession.findFirst({
+    where: { id: sessionId, userId: session.user.id },
+    include: {
+      answers: {
+        include: {
+          error: {
+            select: {
+              id: true,
+              question: true,
+              correctAnswer: true,
+              subject: true,
+              easeFactor: true,
+              interval: true,
+              repetitions: true,
             },
           },
         },
       },
-    });
+    },
+  });
 
-    if (!testSession) {
-      throw new NotFoundError("测试");
-    }
+  if (!testSession) {
+    return NextResponse.json({ error: "未找到测试" }, { status: 404 });
+  }
 
-    if (testSession.status === "COMPLETED") {
-      throw new ValidationError("测试已完成");
-    }
+  if (testSession.status === "COMPLETED") {
+    return NextResponse.json({ error: "测试已完成" }, { status: 400 });
+  }
 
-    const body = await request.json();
-    const { answers } = body as { answers: GradeItem[] };
+  const body = await request.json();
+  const { answers } = body as { answers: GradeItem[] };
 
-    if (!answers || answers.length === 0) {
-      throw new ValidationError("缺少答案数据");
-    }
+  if (!answers || answers.length === 0) {
+    return NextResponse.json({ error: "缺少答案数据" }, { status: 400 });
+  }
 
-    const aiConfig = await getUserAIConfig(userId);
+  const aiConfig = await getUserAIConfig(session.user.id);
 
-    let results: GradeResult[];
+  let results: GradeResult[];
 
-    if (aiConfig) {
-      results = await gradeWithAI(aiConfig, testSession.answers, answers);
-    } else {
-      results = gradeFallback(testSession.answers, answers);
-    }
+  if (aiConfig) {
+    results = await gradeWithAI(aiConfig, testSession.answers, answers);
+  } else {
+    results = gradeFallback(testSession.answers, answers);
+  }
 
-    const correctCount = results.filter((r) => r.isCorrect).length;
+  const correctCount = results.filter((r) => r.isCorrect).length;
 
-    await prisma.$transaction([
-      ...results.map((r) => {
-        const userAnswer = answers.find((a) => a.answerId === r.answerId)?.userAnswer || "";
-        return prisma.testAnswer.update({
-          where: { id: r.answerId },
+  await prisma.$transaction([
+    ...results.map((r) => {
+      const userAnswer = answers.find((a) => a.answerId === r.answerId)?.userAnswer || "";
+      return prisma.testAnswer.update({
+        where: { id: r.answerId },
+        data: {
+          userAnswer,
+          isCorrect: r.isCorrect,
+        },
+      });
+    }),
+    prisma.testSession.update({
+      where: { id: sessionId },
+      data: {
+        status: "COMPLETED",
+        correctCount,
+        completedAt: new Date(),
+      },
+    }),
+  ]);
+
+  const wrongResults = results.filter((r) => !r.isCorrect);
+  if (wrongResults.length > 0) {
+    const wrongAnswerRecords = testSession.answers.filter((a) =>
+      wrongResults.some((r) => r.answerId === a.id)
+    );
+
+    await Promise.all(
+      wrongAnswerRecords.map((wa) => {
+        const sm2Result = calculateSM2(
+          {
+            easeFactor: wa.error.easeFactor,
+            interval: wa.error.interval,
+            repetitions: wa.error.repetitions,
+          },
+          "AGAIN"
+        );
+
+        return prisma.error.update({
+          where: { id: wa.errorId },
           data: {
-            userAnswer,
-            isCorrect: r.isCorrect,
+            easeFactor: sm2Result.easeFactor,
+            interval: sm2Result.interval,
+            repetitions: sm2Result.repetitions,
+            nextReviewDate: sm2Result.nextReviewDate,
+            masteryLevel: sm2Result.masteryLevel,
+            lastReviewDate: new Date(),
           },
         });
-      }),
-      prisma.testSession.update({
-        where: { id: sessionId },
-        data: {
-          status: "COMPLETED",
-          correctCount,
-          completedAt: new Date(),
-        },
-      }),
-    ]);
+      })
+    );
+  }
 
-    const wrongResults = results.filter((r) => !r.isCorrect);
-    if (wrongResults.length > 0) {
-      const wrongAnswerRecords = testSession.answers.filter((a) =>
-        wrongResults.some((r) => r.answerId === a.id)
-      );
-
-      await Promise.all(
-        wrongAnswerRecords.map((wa) => {
-          const sm2Result = calculateSM2(
-            {
-              easeFactor: wa.error.easeFactor,
-              interval: wa.error.interval,
-              repetitions: wa.error.repetitions,
-            },
-            "AGAIN"
-          );
-
-          return prisma.error.update({
-            where: { id: wa.errorId },
-            data: {
-              easeFactor: sm2Result.easeFactor,
-              interval: sm2Result.interval,
-              repetitions: sm2Result.repetitions,
-              nextReviewDate: sm2Result.nextReviewDate,
-              masteryLevel: sm2Result.masteryLevel,
-              lastReviewDate: new Date(),
-            },
-          });
-        })
-      );
-    }
-
-    return {
-      correctCount,
-      totalQuestions: testSession.totalQuestions,
-      results,
-    };
-  },
-  { requireAuth: true }
-);
+  return NextResponse.json({
+    correctCount,
+    totalQuestions: testSession.totalQuestions,
+    results,
+  });
+}

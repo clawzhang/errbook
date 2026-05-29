@@ -1,71 +1,81 @@
-import { NextRequest } from "next/server";
-import { withApiHandler } from "@/lib/api-handler";
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { NotFoundError } from "@/lib/errors";
 import { calculateSM2 } from "@/lib/sm2";
 
-export const GET = withApiHandler(
-  async (_request: NextRequest, { params }) => {
-    const userId = (_request as any).user.id;
-    const { sessionId } = await params;
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "未登录" }, { status: 401 });
+  }
 
-    const testSession = await prisma.testSession.findFirst({
-      where: { id: sessionId, userId },
-      include: {
-        answers: {
-          include: {
-            error: {
-              select: {
-                id: true,
-                question: true,
-                questionImages: true,
-                wrongAnswer: true,
-                correctAnswer: true,
-                analysis: true,
-                subject: true,
-              },
+  const { sessionId } = await params;
+
+  const testSession = await prisma.testSession.findFirst({
+    where: { id: sessionId, userId: session.user.id },
+    include: {
+      answers: {
+        include: {
+          error: {
+            select: {
+              id: true,
+              question: true,
+              questionImages: true,
+              wrongAnswer: true,
+              correctAnswer: true,
+              analysis: true,
+              subject: true,
             },
           },
         },
       },
-    });
+    },
+  });
 
-    if (!testSession) {
-      throw new NotFoundError("测试");
-    }
+  if (!testSession) {
+    return NextResponse.json({ error: "未找到测试" }, { status: 404 });
+  }
 
-    const errorIds = testSession.answers.map((a) => a.errorId);
-    const wrongCounts = await prisma.testAnswer.groupBy({
-      by: ["errorId"],
-      where: {
-        errorId: { in: errorIds },
-        isCorrect: false,
-      },
-      _count: { errorId: true },
-    });
+  const errorIds = testSession.answers.map((a) => a.errorId);
+  const wrongCounts = await prisma.testAnswer.groupBy({
+    by: ["errorId"],
+    where: {
+      errorId: { in: errorIds },
+      isCorrect: false,
+    },
+    _count: { errorId: true },
+  });
 
-    const wrongCountMap = Object.fromEntries(
-      wrongCounts.map((wc) => [wc.errorId, wc._count.errorId])
-    );
+  const wrongCountMap = Object.fromEntries(
+    wrongCounts.map((wc) => [wc.errorId, wc._count.errorId])
+  );
 
-    const enrichedAnswers = testSession.answers.map((a) => ({
-      ...a,
-      repeatWrongCount: wrongCountMap[a.errorId] || 0,
-    }));
+  const enrichedAnswers = testSession.answers.map((a) => ({
+    ...a,
+    repeatWrongCount: wrongCountMap[a.errorId] || 0,
+  }));
 
-    return {
-      ...testSession,
-      answers: enrichedAnswers,
-    };
-  },
-  { requireAuth: true }
-);
+  return NextResponse.json({
+    ...testSession,
+    answers: enrichedAnswers,
+  });
+}
 
-export const POST = withApiHandler(
-  async (request: NextRequest, { params }) => {
-    const userId = (request as any).user.id;
-    const { sessionId } = await params;
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "未登录" }, { status: 401 });
+  }
 
+  const { sessionId } = await params;
+
+  try {
     const body = await request.json();
     const { answers } = body as {
       answers: {
@@ -77,11 +87,11 @@ export const POST = withApiHandler(
     };
 
     const testSession = await prisma.testSession.findFirst({
-      where: { id: sessionId, userId },
+      where: { id: sessionId, userId: session.user.id },
     });
 
     if (!testSession) {
-      throw new NotFoundError("测试");
+      return NextResponse.json({ error: "未找到测试" }, { status: 404 });
     }
 
     const correctCount = answers.filter((a) => a.isCorrect).length;
@@ -143,14 +153,15 @@ export const POST = withApiHandler(
       );
     }
 
-    return {
+    return NextResponse.json({
       correctCount,
       totalQuestions: testSession.totalQuestions,
       accuracy:
         testSession.totalQuestions > 0
           ? correctCount / testSession.totalQuestions
           : 0,
-    };
-  },
-  { requireAuth: true }
-);
+    });
+  } catch {
+    return NextResponse.json({ error: "提交失败" }, { status: 500 });
+  }
+}

@@ -15,7 +15,12 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { SUBJECTS, ERROR_SOURCES } from "@/lib/constants";
+import {
+  SUBJECTS,
+  ERROR_SOURCES,
+  getQuestionTypesBySubject,
+  isQuestionTypeValid,
+} from "@/lib/constants";
 import { ImageUploader } from "@/components/errors/image-uploader";
 import { toast } from "sonner";
 import { ArrowLeft, Sparkles } from "lucide-react";
@@ -28,6 +33,7 @@ interface ErrorFormProps {
   errorId?: string;
   defaultValues?: {
     subject?: string;
+    questionType?: string | null;
     knowledgePointId?: string | null;
     question?: string;
     questionImages?: string[];
@@ -40,11 +46,23 @@ interface ErrorFormProps {
   };
 }
 
+interface OCRResult {
+  question: string;
+  wrongAnswer: string;
+  correctAnswer: string;
+  analysis: string;
+  subject: string;
+  questionType?: string;
+  knowledgePoint: string;
+  errorReason: string;
+}
+
 export function ErrorForm({ mode, errorId, defaultValues }: ErrorFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   const [subject, setSubject] = useState(defaultValues?.subject || "");
+  const [questionType, setQuestionType] = useState(defaultValues?.questionType || "");
   const [knowledgePointId, setKnowledgePointId] = useState(
     defaultValues?.knowledgePointId || ""
   );
@@ -60,32 +78,36 @@ export function ErrorForm({ mode, errorId, defaultValues }: ErrorFormProps) {
     defaultValues?.questionImages || []
   );
 
-  function handleOCRResult(result: {
-    question: string;
-    wrongAnswer: string;
-    correctAnswer: string;
-    analysis: string;
-    subject: string;
-    knowledgePoint: string;
-    errorReason: string;
-  }) {
+  const questionTypeOptions = getQuestionTypesBySubject(subject);
+
+  function applySubjectChange(nextSubject: string) {
+    setSubject(nextSubject);
+    setKnowledgePointId("");
+    setPendingKnowledgePointName("");
+    if (!isQuestionTypeValid(nextSubject, questionType)) {
+      setQuestionType("");
+    }
+  }
+
+  function handleOCRResult(result: OCRResult) {
     if (result.question) setQuestion(result.question);
     if (result.wrongAnswer) setWrongAnswer(result.wrongAnswer);
     if (result.correctAnswer) setCorrectAnswer(result.correctAnswer);
     if (result.analysis) setAnalysis(result.analysis);
     if (result.errorReason) setErrorReason(result.errorReason);
     if (result.subject && ["CHINESE", "MATH", "ENGLISH"].includes(result.subject)) {
-      setSubject(result.subject);
-      setKnowledgePointId("");
+      applySubjectChange(result.subject);
+      if (result.questionType && isQuestionTypeValid(result.subject, result.questionType)) {
+        setQuestionType(result.questionType);
+      }
+    } else if (result.questionType && isQuestionTypeValid(subject, result.questionType)) {
+      setQuestionType(result.questionType);
     }
     if (result.knowledgePoint) setPendingKnowledgePointName(result.knowledgePoint);
   }
 
   function handleSubjectChange(value: string | null) {
-    const v = value || "";
-    setSubject(v);
-    setKnowledgePointId("");
-    setPendingKnowledgePointName("");
+    applySubjectChange(value || "");
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -98,6 +120,7 @@ export function ErrorForm({ mode, errorId, defaultValues }: ErrorFormProps) {
 
       const body: Record<string, unknown> = {
         subject,
+        questionType: questionType || null,
         knowledgePointId: knowledgePointId || null,
         knowledgePointName: pendingKnowledgePointName || null,
         question,
@@ -140,8 +163,8 @@ export function ErrorForm({ mode, errorId, defaultValues }: ErrorFormProps) {
         title={mode === "create" ? "把新错题收进系统" : "更新这条错题"}
         description={
           mode === "create"
-            ? "录入题目、错误答案和知识点，让后续复习调度和统计分析真正可用。"
-            : "你可以修正题目内容、来源、知识点和解析，使这条记录更准确。"
+            ? "录入题目、错误答案、题目类型和知识点，让后续复习调度和统计分析真正可用。"
+            : "你可以修正题目内容、题目类型、来源、知识点和解析，使这条记录更准确。"
         }
         actions={
           <Button variant="outline" type="button" onClick={() => router.back()}>
@@ -191,94 +214,127 @@ export function ErrorForm({ mode, errorId, defaultValues }: ErrorFormProps) {
             )}
 
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>科目 *</Label>
-              <Select value={subject} onValueChange={handleSubjectChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="选择科目">
-                    {subject ? SUBJECTS[subject as keyof typeof SUBJECTS]?.label : null}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(SUBJECTS).map(([key, { label }]) => (
-                    <SelectItem key={key} value={key}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+              <div className="space-y-2">
+                <Label>科目 *</Label>
+                <Select value={subject} onValueChange={handleSubjectChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择科目">
+                      {subject ? SUBJECTS[subject as keyof typeof SUBJECTS]?.label : null}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(SUBJECTS).map(([key, { label }]) => (
+                      <SelectItem key={key} value={key}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <KnowledgePointSelector
-              subject={subject}
-              value={knowledgePointId}
-              onChange={setKnowledgePointId}
-              pendingKnowledgePointName={pendingKnowledgePointName}
-              onPendingKnowledgePointHandled={() => setPendingKnowledgePointName("")}
-            />
+              <div className="space-y-2">
+                <Label>题目类型</Label>
+                <Select
+                  value={questionType}
+                  onValueChange={(value) => setQuestionType(value || "")}
+                  disabled={!questionTypeOptions}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={subject ? "选择题目类型" : "请先选择科目"}>
+                      {questionType && questionTypeOptions
+                        ? questionTypeOptions[
+                            questionType as keyof typeof questionTypeOptions
+                          ]?.label
+                        : null}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {questionTypeOptions
+                      ? Object.entries(questionTypeOptions).map(([key, { label }]) => (
+                          <SelectItem key={key} value={key}>
+                            {label}
+                          </SelectItem>
+                        ))
+                      : null}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <div className="space-y-2">
-              <Label>来源 *</Label>
-              <Select value={source} onValueChange={(v) => setSource(v || "HOMEWORK")}>
-                <SelectTrigger>
-                  <SelectValue placeholder="选择来源">
-                    {source ? ERROR_SOURCES[source as keyof typeof ERROR_SOURCES]?.label : null}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(ERROR_SOURCES).map(([key, { label }]) => (
-                    <SelectItem key={key} value={key}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>来源详情</Label>
-              <Input
-                placeholder="如：期中考试第5题"
-                value={sourceDetail}
-                onChange={(e) => setSourceDetail(e.target.value)}
+              <KnowledgePointSelector
+                subject={subject}
+                value={knowledgePointId}
+                onChange={setKnowledgePointId}
+                pendingKnowledgePointName={pendingKnowledgePointName}
+                onPendingKnowledgePointHandled={() => setPendingKnowledgePointName("")}
               />
+
+              <div className="space-y-2">
+                <Label>来源 *</Label>
+                <Select value={source} onValueChange={(v) => setSource(v || "HOMEWORK")}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择来源">
+                      {source ? ERROR_SOURCES[source as keyof typeof ERROR_SOURCES]?.label : null}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(ERROR_SOURCES).map(([key, { label }]) => (
+                      <SelectItem key={key} value={key}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label>来源详情</Label>
+                <Input
+                  placeholder="如：期中考试第5题"
+                  value={sourceDetail}
+                  onChange={(e) => setSourceDetail(e.target.value)}
+                />
+                {mode === "create" && defaultValues?.sourceDetail ? (
+                  <p className="text-xs text-muted-foreground">
+                    已自动带入上一条错题的来源信息，可按当前题目修改。
+                  </p>
+                ) : null}
+              </div>
             </div>
-          </div>
 
-          <div className="space-y-2">
-            <Label>题目内容 *</Label>
-            <Textarea
-              placeholder="输入题目内容，数学公式使用 $...$ 或 $$...$$ 包裹"
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              rows={4}
-              required
-            />
-            <p className="text-xs text-muted-foreground">
-              支持 LaTeX 公式：行内用 $公式$，独立行用 $$公式$$
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>错误答案</Label>
+              <Label>题目内容 *</Label>
               <Textarea
-                placeholder="可留空，适合试卷未填写或还未订正的情况"
-                value={wrongAnswer}
-                onChange={(e) => setWrongAnswer(e.target.value)}
-                rows={3}
+                placeholder="输入题目内容，数学公式使用 $...$ 或 $$...$$ 包裹"
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                rows={4}
+                required
               />
+              <p className="text-xs text-muted-foreground">
+                支持 LaTeX 公式：行内用 $公式$，独立行用 $$公式$$
+              </p>
             </div>
-            <div className="space-y-2">
-              <Label>正确答案</Label>
-              <Textarea
-                placeholder="可留空，后续订正后再补充"
-                value={correctAnswer}
-                onChange={(e) => setCorrectAnswer(e.target.value)}
-                rows={3}
-              />
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>错误答案</Label>
+                <Textarea
+                  placeholder="可留空，适合试卷未填写或还未订正的情况"
+                  value={wrongAnswer}
+                  onChange={(e) => setWrongAnswer(e.target.value)}
+                  rows={3}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>正确答案</Label>
+                <Textarea
+                  placeholder="可留空，后续订正后再补充"
+                  value={correctAnswer}
+                  onChange={(e) => setCorrectAnswer(e.target.value)}
+                  rows={3}
+                />
+              </div>
             </div>
-          </div>
 
             <div className="space-y-2">
               <Label>错误原因</Label>

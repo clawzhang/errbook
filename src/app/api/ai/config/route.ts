@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { encryptApiKey, decryptApiKey, isEncrypted } from "@/lib/encryption";
 import { z } from "zod";
 
 const aiConfigSchema = z.object({
@@ -21,31 +20,9 @@ export async function GET() {
     select: { aiBaseUrl: true, aiApiKey: true, aiModel: true },
   });
 
-  // 解密 API 密钥用于显示（前端可能需要显示部分字符）
-  let apiKey = "";
-  if (user?.aiApiKey) {
-    try {
-      // 如果已加密，解密后返回掩码版本
-      if (isEncrypted(user.aiApiKey)) {
-        const decrypted = decryptApiKey(user.aiApiKey);
-        // 只显示前 4 位和后 4 位
-        apiKey = decrypted.length > 8
-          ? `${decrypted.slice(0, 4)}${"*".repeat(decrypted.length - 8)}${decrypted.slice(-4)}`
-          : "*".repeat(decrypted.length);
-      } else {
-        // 未加密的旧数据，也返回掩码
-        apiKey = user.aiApiKey.length > 8
-          ? `${user.aiApiKey.slice(0, 4)}${"*".repeat(user.aiApiKey.length - 8)}${user.aiApiKey.slice(-4)}`
-          : "*".repeat(user.aiApiKey.length);
-      }
-    } catch {
-      apiKey = "****"; // 解密失败，返回占位符
-    }
-  }
-
   return NextResponse.json({
     baseUrl: user?.aiBaseUrl || "",
-    apiKey,
+    apiKey: user?.aiApiKey || "",
     model: user?.aiModel || "",
   });
 }
@@ -78,18 +55,7 @@ export async function PUT(request: NextRequest) {
     } = {};
 
     if (baseUrl !== undefined) updateData.aiBaseUrl = baseUrl;
-    if (apiKey !== undefined) {
-      // 加密 API 密钥
-      try {
-        updateData.aiApiKey = encryptApiKey(apiKey);
-      } catch (error) {
-        console.error("加密 API 密钥失败:", error);
-        return NextResponse.json(
-          { error: "加密配置失败，请检查服务器配置" },
-          { status: 500 }
-        );
-      }
-    }
+    if (apiKey !== undefined) updateData.aiApiKey = apiKey;
     if (model !== undefined) updateData.aiModel = model;
 
     await prisma.user.update({

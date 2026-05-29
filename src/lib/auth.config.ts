@@ -49,20 +49,24 @@ export const authConfig: NextAuthConfig = {
       if (user) {
         token.id = user.id;
         token.role = user.role;
-        token.name = user.name;
-        token.email = user.email;
-        token.picture = user.image;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user && token.id) {
-        // 从 JWT token 中读取用户信息，避免每次都查询数据库
-        session.user.id = token.id as string;
-        session.user.email = token.email as string;
-        session.user.name = token.name as string;
-        session.user.image = token.picture as string;
-        session.user.role = token.role as any;
+        const user = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { id: true, email: true, name: true, avatar: true, role: true },
+        });
+
+        if (user) {
+          const role = await ensureAdminRole(user);
+          session.user.id = user.id;
+          session.user.email = user.email;
+          session.user.name = user.name;
+          session.user.image = user.avatar;
+          session.user.role = role;
+        }
       }
       return session;
     },

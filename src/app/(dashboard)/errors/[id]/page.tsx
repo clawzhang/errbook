@@ -12,7 +12,7 @@ import { MasteryBadge } from "@/components/common/mastery-badge";
 import { MarkdownContent } from "@/components/common/markdown-content";
 import { QuestionContent } from "@/components/common/question-content";
 import { ImageLightboxGallery } from "@/components/common/image-lightbox-gallery";
-import { ERROR_SOURCES } from "@/lib/constants";
+import { ERROR_SOURCES, getQuestionTypeLabel } from "@/lib/constants";
 import { use } from "react";
 import { format } from "date-fns";
 import { ArrowLeft, ArrowRight, Edit, Trash2, Bot, Loader2 } from "lucide-react";
@@ -31,6 +31,7 @@ import { DashboardHero, DashboardPage, EmptyStateCard, SectionHeading } from "@/
 interface ErrorDetail {
   id: string;
   subject: string;
+  questionType: string | null;
   question: string;
   questionImages: string;
   wrongAnswer: string;
@@ -206,6 +207,7 @@ export default function ErrorDetailPage({
   if (!error) return null;
 
   const images: string[] = JSON.parse(error.questionImages || "[]");
+  const questionTypeLabel = getQuestionTypeLabel(error.subject, error.questionType);
   const queryString = searchParams.toString();
   const withQuery = (targetId: string) =>
     `/errors/${targetId}${queryString ? `?${queryString}` : ""}`;
@@ -328,6 +330,7 @@ export default function ErrorDetailPage({
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex flex-wrap items-center gap-2">
               <SubjectTag subject={error.subject as "CHINESE" | "MATH" | "ENGLISH"} />
+              {questionTypeLabel ? <Badge variant="secondary">{questionTypeLabel}</Badge> : null}
               {error.knowledgePoint ? <Badge variant="outline">{error.knowledgePoint.name}</Badge> : null}
               <Badge variant="secondary">
                 {ERROR_SOURCES[error.source as keyof typeof ERROR_SOURCES]?.label}

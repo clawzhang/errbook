@@ -15,7 +15,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ArrowRight, LockKeyhole, Mail, UserRound } from "lucide-react";
-import { handleApiError } from "@/lib/error-handler";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -52,8 +51,7 @@ export default function RegisterPage() {
       }
 
       router.push("/login");
-    } catch (error) {
-      handleApiError(error, "注册失败，请稍后重试");
+    } catch {
       setError("注册失败，请稍后重试");
     } finally {
       setLoading(false);

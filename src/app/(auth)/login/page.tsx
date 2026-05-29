@@ -17,7 +17,6 @@ import {
 } from "@/components/ui/card";
 import { toast } from "sonner";
 import { ArrowRight, LockKeyhole, Mail } from "lucide-react";
-import { handleApiError } from "@/lib/error-handler";
 
 function LoginForm() {
   const router = useRouter();
@@ -45,8 +44,8 @@ function LoginForm() {
         router.push(callbackUrl);
         router.refresh();
       }
-    } catch (error) {
-      handleApiError(error, "登录失败");
+    } catch {
+      toast.error("登录失败");
     } finally {
       setLoading(false);
     }

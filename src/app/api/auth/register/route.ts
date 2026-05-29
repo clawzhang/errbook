@@ -1,7 +1,5 @@
-import { NextRequest } from "next/server";
-import { withApiHandler } from "@/lib/api-handler";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { ConflictError } from "@/lib/errors";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
@@ -11,13 +9,22 @@ const registerSchema = z.object({
   password: z.string().min(6, "密码至少6位").max(50, "密码最多50位"),
 });
 
-export const POST = withApiHandler(
-  async (request: NextRequest) => {
-    const { email, name, password } = (request as any).validatedBody;
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const result = registerSchema.safeParse(body);
+
+    if (!result.success) {
+      const errors = result.error.flatten().fieldErrors;
+      const firstError = Object.values(errors)[0]?.[0] || "输入信息有误";
+      return NextResponse.json({ error: firstError }, { status: 400 });
+    }
+
+    const { email, name, password } = result.data;
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
-      throw new ConflictError("该邮箱已被注册");
+      return NextResponse.json({ error: "该邮箱已被注册" }, { status: 400 });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -25,7 +32,11 @@ export const POST = withApiHandler(
       data: { email, name, passwordHash },
     });
 
-    return { user: { id: user.id, email: user.email, name: user.name } };
-  },
-  { bodySchema: registerSchema }
-);
+    return NextResponse.json(
+      { user: { id: user.id, email: user.email, name: user.name } },
+      { status: 201 }
+    );
+  } catch {
+    return NextResponse.json({ error: "注册失败，请稍后重试" }, { status: 500 });
+  }
+}

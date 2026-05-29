@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma";
-import { decryptApiKey } from "@/lib/encryption";
 
 interface AIConfig {
   baseUrl: string;
@@ -17,18 +16,9 @@ export async function getUserAIConfig(
 
   if (!user?.aiBaseUrl || !user?.aiApiKey || !user?.aiModel) return null;
 
-  // 解密 API 密钥
-  let apiKey: string;
-  try {
-    apiKey = decryptApiKey(user.aiApiKey);
-  } catch (error) {
-    console.error("解密 API 密钥失败:", error);
-    throw new Error("AI 配置无效，请重新设置 API 密钥");
-  }
-
   return {
     baseUrl: user.aiBaseUrl,
-    apiKey,
+    apiKey: user.aiApiKey,
     model: user.aiModel,
   };
 }
@@ -45,7 +35,7 @@ type MessageContent =
 export async function callAI(
   config: AIConfig,
   messages: ChatMessage[],
-  options?: { temperature?: number; maxTokens?: number; timeout?: number }
+  options?: { temperature?: number; maxTokens?: number }
 ): Promise<string> {
   const normalizedBaseUrl = config.baseUrl.replace(/\/+$/, "");
   const url = normalizedBaseUrl.endsWith("/v1")
@@ -59,65 +49,46 @@ export async function callAI(
     max_tokens: options?.maxTokens ?? 2000,
   };
 
-  // 添加超时控制
-  const controller = new AbortController();
-  const timeoutMs = options?.timeout ?? 60000; // 默认 60 秒超时
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${config.apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`AI 请求失败 (${res.status}): ${text.slice(0, 200)}`);
+  }
+
+  const resClone = res.clone();
+  let data: {
+    choices?: Array<{
+      message?: {
+        content?: string;
+      };
+    }>;
+  };
 
   try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`AI 请求失败 (${res.status}): ${text.slice(0, 200)}`);
-    }
-
-    const resClone = res.clone();
-    let data: {
-      choices?: Array<{
-        message?: {
-          content?: string;
-        };
-      }>;
-    };
-
-    try {
-      data = await res.json();
-    } catch {
-      const text = await resClone.text().catch(() => "");
-      const preview = text.replace(/\s+/g, " ").slice(0, 120);
-      throw new Error(
-        `AI 服务返回了非 JSON 响应，请确认 Base URL 指向兼容 OpenAI 的接口。响应片段：${preview || "空响应"}`
-      );
-    }
-
-    const content = data.choices?.[0]?.message?.content;
-
-    if (!content) {
-      throw new Error("AI 未返回有效内容，请检查所选模型是否支持聊天补全接口");
-    }
-
-    return content;
-  } catch (error) {
-    clearTimeout(timeoutId);
-
-    // 处理超时错误
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error(`AI 请求超时（${timeoutMs / 1000}秒），请稍后重试`);
-    }
-
-    throw error;
+    data = await res.json();
+  } catch {
+    const text = await resClone.text().catch(() => "");
+    const preview = text.replace(/\s+/g, " ").slice(0, 120);
+    throw new Error(
+      `AI 服务返回了非 JSON 响应，请确认 Base URL 指向兼容 OpenAI 的接口。响应片段：${preview || "空响应"}`
+    );
   }
+
+  const content = data.choices?.[0]?.message?.content;
+
+  if (!content) {
+    throw new Error("AI 未返回有效内容，请检查所选模型是否支持聊天补全接口");
+  }
+
+  return content;
 }
 
 export function buildOCRPrompt(): ChatMessage {
@@ -131,6 +102,7 @@ export function buildOCRPrompt(): ChatMessage {
   "correctAnswer": "正确答案（如果图片中能看到的话，否则留空字符串）",
   "analysis": "解题思路或解析（如果图片中能看到的话，否则留空字符串）",
   "subject": "CHINESE 或 MATH 或 ENGLISH（根据题目内容判断科目）",
+  "questionType": "题目类型编码，只能返回该科目支持的编码之一。语文支持 CHOICE、JUDGMENT、FILL_BLANK、READING、COMPOSITION、OTHER；数学支持 CHOICE、JUDGMENT、FILL_BLANK、APPLICATION、CALCULATION、OTHER；英语支持 CHOICE、JUDGMENT、FILL_BLANK、READING、WRITING、OTHER。如无法判断返回 OTHER",
   "knowledgePoint": "知识点名称（如"一元二次方程"、"阅读理解"等）",
   "errorReason": "可能的错误原因（如果可以推断的话）"
 }`,

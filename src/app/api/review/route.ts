@@ -1,8 +1,7 @@
-import { NextRequest } from "next/server";
-import { withApiHandler } from "@/lib/api-handler";
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { calculateSM2 } from "@/lib/sm2";
-import { NotFoundError } from "@/lib/errors";
 import { z } from "zod";
 
 const reviewResultSchema = z.object({
@@ -11,57 +10,68 @@ const reviewResultSchema = z.object({
   userAnswer: z.string().nullable().optional(),
 });
 
-export const GET = withApiHandler(
-  async (request: NextRequest) => {
-    const userId = (request as any).user.id;
+export async function GET(request: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "未登录" }, { status: 401 });
+  }
 
-    const dateParam = request.nextUrl.searchParams.get("date");
-    const targetDate = dateParam ? new Date(dateParam) : new Date();
-    targetDate.setHours(23, 59, 59, 999);
+  const dateParam = request.nextUrl.searchParams.get("date");
+  const targetDate = dateParam ? new Date(dateParam) : new Date();
+  targetDate.setHours(23, 59, 59, 999);
 
-    const items = await prisma.error.findMany({
-      where: {
-        userId,
-        nextReviewDate: { lte: targetDate },
+  const items = await prisma.error.findMany({
+    where: {
+      userId: session.user.id,
+      nextReviewDate: { lte: targetDate },
+    },
+    include: {
+      knowledgePoint: { select: { id: true, name: true } },
+    },
+    orderBy: { nextReviewDate: "asc" },
+  });
+
+  const completedToday = await prisma.review.findMany({
+    where: {
+      userId: session.user.id,
+      createdAt: {
+        gte: new Date(new Date().setHours(0, 0, 0, 0)),
       },
-      include: {
-        knowledgePoint: { select: { id: true, name: true } },
-      },
-      orderBy: { nextReviewDate: "asc" },
-    });
+    },
+    select: { errorId: true },
+  });
 
-    const completedToday = await prisma.review.findMany({
-      where: {
-        userId,
-        createdAt: {
-          gte: new Date(new Date().setHours(0, 0, 0, 0)),
-        },
-      },
-      select: { errorId: true },
-    });
+  const completedIds = new Set(completedToday.map((r) => r.errorId));
 
-    const completedIds = new Set(completedToday.map((r) => r.errorId));
+  return NextResponse.json({
+    total: items.length,
+    completed: items.filter((item) => completedIds.has(item.id)).length,
+    items,
+  });
+}
 
-    return {
-      total: items.length,
-      completed: items.filter((item) => completedIds.has(item.id)).length,
-      items,
-    };
-  },
-  { requireAuth: true }
-);
+export async function POST(request: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "未登录" }, { status: 401 });
+  }
 
-export const POST = withApiHandler(
-  async (request: NextRequest) => {
-    const userId = (request as any).user.id;
-    const { errorId, quality, userAnswer } = (request as any).validatedBody;
+  try {
+    const body = await request.json();
+    const result = reviewResultSchema.safeParse(body);
+
+    if (!result.success) {
+      return NextResponse.json({ error: "参数错误" }, { status: 400 });
+    }
+
+    const { errorId, quality, userAnswer } = result.data;
 
     const error = await prisma.error.findFirst({
-      where: { id: errorId, userId },
+      where: { id: errorId, userId: session.user.id },
     });
 
     if (!error) {
-      throw new NotFoundError("错题");
+      return NextResponse.json({ error: "未找到该错题" }, { status: 404 });
     }
 
     const sm2Result = calculateSM2(
@@ -89,7 +99,7 @@ export const POST = withApiHandler(
       prisma.review.create({
         data: {
           errorId,
-          userId,
+          userId: session.user.id,
           quality,
           userAnswer,
           prevEaseFactor: error.easeFactor,
@@ -99,7 +109,8 @@ export const POST = withApiHandler(
       }),
     ]);
 
-    return { error: updatedError, review };
-  },
-  { requireAuth: true, bodySchema: reviewResultSchema }
-);
+    return NextResponse.json({ error: updatedError, review });
+  } catch {
+    return NextResponse.json({ error: "提交失败" }, { status: 500 });
+  }
+}
