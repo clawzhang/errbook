@@ -59,25 +59,8 @@ RUN npx prisma generate && \
     # 删除 source maps
     find .next -name "*.map" -delete 2>/dev/null || true
 
-# 准备输出目录
-RUN mkdir -p /tmp/app-output && \
-    if [ -d ".next/standalone" ]; then \
-        echo "✅ Using standalone output"; \
-        cp -a .next/standalone/. /tmp/app-output/ && \
-        mkdir -p /tmp/app-output/.next && \
-        cp -a .next/static /tmp/app-output/.next/static && \
-        cp -a public /tmp/app-output/public; \
-    else \
-        echo "⚠️  Using full .next output"; \
-        cp -a .next /tmp/app-output/.next && \
-        cp -a public /tmp/app-output/public && \
-        cp package.json /tmp/app-output/package.json; \
-    fi && \
-    if [ ! -f "/tmp/app-output/server.js" ] && [ ! -f "/tmp/app-output/.next/BUILD_ID" ]; then \
-        echo "❌ Next.js runtime output is incomplete"; \
-        find /tmp/app-output -maxdepth 2 -type f | sort; \
-        exit 1; \
-    fi
+# 校验 Next standalone 产物，避免生成无法启动的镜像
+RUN test -f .next/standalone/server.js
 
 # ============================================
 # 阶段 5: 生产运行镜像（最小化）
@@ -102,8 +85,10 @@ RUN apk add --no-cache openssl dumb-init && \
 # 只复制生产依赖（从 deps 阶段）
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 
-# 复制构建产物（从临时目录）
-COPY --from=builder --chown=nextjs:nodejs /tmp/app-output ./
+# 复制 Next standalone 运行产物
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 # 复制 Prisma 相关文件
 COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts ./prisma.config.ts
