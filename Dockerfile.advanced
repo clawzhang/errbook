@@ -71,15 +71,20 @@ RUN npx prisma generate && \
 RUN mkdir -p /tmp/app-output && \
     if [ -d ".next/standalone" ]; then \
         echo "✅ Using standalone output"; \
-        cp -r .next/standalone/* /tmp/app-output/ && \
+        cp -a .next/standalone/. /tmp/app-output/ && \
         mkdir -p /tmp/app-output/.next && \
-        cp -r .next/static /tmp/app-output/.next/static && \
-        cp -r public /tmp/app-output/public; \
+        cp -a .next/static /tmp/app-output/.next/static && \
+        cp -a public /tmp/app-output/public; \
     else \
         echo "⚠️  Using full .next output"; \
-        cp -r .next /tmp/app-output/.next && \
-        cp -r public /tmp/app-output/public && \
+        cp -a .next /tmp/app-output/.next && \
+        cp -a public /tmp/app-output/public && \
         cp package.json /tmp/app-output/package.json; \
+    fi && \
+    if [ ! -f "/tmp/app-output/server.js" ] && [ ! -f "/tmp/app-output/.next/BUILD_ID" ]; then \
+        echo "❌ Next.js runtime output is incomplete"; \
+        find /tmp/app-output -maxdepth 2 -type f | sort; \
+        exit 1; \
     fi
 
 # ============================================
