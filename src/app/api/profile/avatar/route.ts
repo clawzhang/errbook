@@ -3,18 +3,14 @@ import { mkdir, writeFile } from "fs/promises";
 import { auth } from "@/lib/auth";
 
 const uploadRoot = process.env.UPLOAD_DIR || "public/uploads";
-const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
-function getExtension(file: File) {
-  if (file.name.includes(".")) {
-    return `.${file.name.split(".").pop()?.toLowerCase() || "jpg"}`;
-  }
-
-  if (file.type === "image/png") return ".png";
-  if (file.type === "image/webp") return ".webp";
-  if (file.type === "image/gif") return ".gif";
-  return ".jpg";
-}
+// 仅接受可安全内联渲染的位图格式，扩展名由 MIME 推导而非客户端文件名
+const allowedTypes: Record<string, string> = {
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+  "image/gif": ".gif",
+};
 
 export async function POST(request: NextRequest) {
   const session = await auth();
@@ -30,7 +26,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "请选择头像图片" }, { status: 400 });
     }
 
-    if (!allowedTypes.has(file.type)) {
+    if (!allowedTypes[file.type]) {
       return NextResponse.json(
         { error: "头像仅支持 JPG、PNG、WebP 或 GIF 图片" },
         { status: 400 }
@@ -44,7 +40,7 @@ export async function POST(request: NextRequest) {
     const uploadDir = `${uploadRoot}/${session.user.id}/avatar`;
     await mkdir(uploadDir, { recursive: true });
 
-    const filename = `avatar-${Date.now()}${getExtension(file)}`;
+    const filename = `avatar-${Date.now()}${allowedTypes[file.type]}`;
     const filepath = `${uploadDir}/${filename}`;
     const buffer = Buffer.from(await file.arrayBuffer());
     await writeFile(filepath, buffer);

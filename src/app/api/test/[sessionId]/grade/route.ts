@@ -164,7 +164,11 @@ export async function POST(
   }
 
   const correctCount = results.filter((r) => r.isCorrect).length;
+  const now = new Date();
 
+  const answerRecordMap = new Map(testSession.answers.map((a) => [a.id, a]));
+
+  // 判分结果、测试状态与错题复习进度必须原子写入，避免中途失败留下脏数据
   await prisma.$transaction([
     ...results.map((r) => {
       const userAnswer = answers.find((a) => a.answerId === r.answerId)?.userAnswer || "";
@@ -181,19 +185,13 @@ export async function POST(
       data: {
         status: "COMPLETED",
         correctCount,
-        completedAt: new Date(),
+        completedAt: now,
       },
     }),
-  ]);
-
-  const wrongResults = results.filter((r) => !r.isCorrect);
-  if (wrongResults.length > 0) {
-    const wrongAnswerRecords = testSession.answers.filter((a) =>
-      wrongResults.some((r) => r.answerId === a.id)
-    );
-
-    await Promise.all(
-      wrongAnswerRecords.map((wa) => {
+    ...results
+      .filter((r) => !r.isCorrect)
+      .map((r) => {
+        const wa = answerRecordMap.get(r.answerId)!;
         const sm2Result = calculateSM2(
           {
             easeFactor: wa.error.easeFactor,
@@ -211,12 +209,11 @@ export async function POST(
             repetitions: sm2Result.repetitions,
             nextReviewDate: sm2Result.nextReviewDate,
             masteryLevel: sm2Result.masteryLevel,
-            lastReviewDate: new Date(),
+            lastReviewDate: now,
           },
         });
-      })
-    );
-  }
+      }),
+  ]);
 
   return NextResponse.json({
     correctCount,

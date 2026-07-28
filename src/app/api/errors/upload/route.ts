@@ -4,6 +4,14 @@ import { writeFile, mkdir } from "fs/promises";
 
 const uploadRoot = process.env.UPLOAD_DIR || "public/uploads";
 
+// 仅接受可安全内联渲染的位图格式，刻意排除 SVG（可携带脚本）
+const allowedTypes: Record<string, string> = {
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+  "image/gif": ".gif",
+};
+
 export async function POST(request: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
@@ -30,6 +38,18 @@ export async function POST(request: NextRequest) {
     const urls: string[] = [];
 
     for (const file of files) {
+      if (!(file instanceof File)) {
+        return NextResponse.json({ error: "上传内容不是文件" }, { status: 400 });
+      }
+
+      const ext = allowedTypes[file.type];
+      if (!ext) {
+        return NextResponse.json(
+          { error: `${file.name || "该文件"} 格式不支持，仅支持 JPG、PNG、WebP、GIF` },
+          { status: 400 }
+        );
+      }
+
       if (file.size > 5 * 1024 * 1024) {
         return NextResponse.json(
           { error: `${file.name} 超过5MB限制` },
@@ -37,9 +57,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const ext = file.name.includes(".")
-        ? `.${file.name.split(".").pop()}`
-        : ".jpg";
+      // 文件名完全由服务端生成，不采用客户端提供的名称与扩展名
       const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
       const filepath = `${uploadDir}/${filename}`;
 
